@@ -8,15 +8,15 @@ and ``output`` are emitted.
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
-from opscanvas_core.schema_versions import CURRENT_SCHEMA_VERSION
+from opscanvas_core.schema_versions import CURRENT_SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSIONS
 
 
 class ContractModel(BaseModel):
     """Base model settings shared by canonical contract objects."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True, strict=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class RunStatus(StrEnum):
@@ -46,12 +46,12 @@ class SpanKind(StrEnum):
 class Usage(ContractModel):
     """Token and cost accounting attached to runs or spans."""
 
-    input_tokens: int | None = Field(default=None, ge=0)
-    output_tokens: int | None = Field(default=None, ge=0)
-    cached_input_tokens: int | None = Field(default=None, ge=0)
-    reasoning_tokens: int | None = Field(default=None, ge=0)
-    total_tokens: int | None = Field(default=None, ge=0)
-    cost_usd: float | None = Field(default=None, ge=0)
+    input_tokens: int | None = Field(default=None, ge=0, strict=True)
+    output_tokens: int | None = Field(default=None, ge=0, strict=True)
+    cached_input_tokens: int | None = Field(default=None, ge=0, strict=True)
+    reasoning_tokens: int | None = Field(default=None, ge=0, strict=True)
+    total_tokens: int | None = Field(default=None, ge=0, strict=True)
+    cost_usd: float | None = Field(default=None, ge=0, strict=True)
 
 
 class SpanEvent(ContractModel):
@@ -98,3 +98,11 @@ class Run(ContractModel):
     usage: Usage | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     spans: list[Span] = Field(default_factory=list)
+
+    @field_validator("schema_version")
+    @classmethod
+    def schema_version_must_be_supported(cls, value: str) -> str:
+        """Reject persisted payloads using an unsupported schema version."""
+        if value not in SUPPORTED_SCHEMA_VERSIONS:
+            raise ValueError(f"Unsupported schema version: {value}")
+        return value

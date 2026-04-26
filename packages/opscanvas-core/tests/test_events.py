@@ -76,6 +76,23 @@ def test_run_span_event_creation_and_alias_serialization() -> None:
     assert dumped["spans"][0]["events"][0]["attributes"] == {"ok": True, "attempt": 1}
 
 
+def test_span_validates_decoded_json_wire_values() -> None:
+    span = Span.model_validate(
+        {
+            "id": "span_123",
+            "run_id": "run_123",
+            "kind": "tool_call",
+            "name": "search",
+            "started_at": "2026-01-01T00:00:00Z",
+            "input": {"query": "contract"},
+        }
+    )
+
+    assert span.kind is SpanKind.tool_call
+    assert span.started_at == datetime(2026, 1, 1, tzinfo=UTC)
+    assert span.input_data == {"query": "contract"}
+
+
 def test_extra_fields_are_rejected() -> None:
     with pytest.raises(ValidationError):
         SpanEvent(
