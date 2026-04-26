@@ -3,9 +3,9 @@
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "scripts": {
-    "test": "if [ -f web/package.json ]; then pnpm --dir web test; else echo 'web/package.json not found; skipping frontend tests'; fi",
-    "lint": "if [ -f web/package.json ]; then pnpm --dir web lint; else echo 'web/package.json not found; skipping frontend lint'; fi",
-    "typecheck": "if [ -f web/package.json ]; then pnpm --dir web typecheck; else echo 'web/package.json not found; skipping frontend typecheck'; fi",
+    "test": "pnpm --filter web test",
+    "lint": "pnpm --filter web lint",
+    "typecheck": "pnpm --filter web typecheck",
     "verify": "pnpm run test && pnpm run lint && pnpm run typecheck"
   }
 }
