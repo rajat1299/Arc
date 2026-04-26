@@ -3,7 +3,9 @@ name = "opscanvas-core"
 version = "0.1.0"
 description = "Shared OpsCanvas core primitives."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.12.0",
+]
 
 [build-system]
 requires = ["hatchling"]
