@@ -21,28 +21,59 @@ class OpsCanvasProcessor:
         config: OpsCanvasConfig | None = None,
     ) -> None:
         self.exporter = exporter or OpsCanvasExporter(config=config)
+        self._trace_buffers: dict[str, list[Span]] = {}
+        self._active_trace_ids: list[str] = []
 
     def on_trace_start(self, trace: object) -> None:
-        """Accept trace lifecycle callbacks for SDK compatibility."""
+        """Initialize a span buffer for a trace lifecycle."""
+        trace_id = _trace_id(trace)
+        if trace_id is None:
+            return
+
+        self._trace_buffers.setdefault(trace_id, [])
+        self._active_trace_ids.append(trace_id)
 
     def on_trace_end(self, trace: object) -> None:
-        """Accept trace lifecycle callbacks for SDK compatibility."""
-        self.exporter.export_run(
-            build_run_from_trace(trace, self.exporter.spans, self.exporter.config)
-        )
+        """Build and export a completed run from buffered trace spans."""
+        trace_id = _trace_id(trace)
+        buffered_spans = None
+        if trace_id is not None:
+            buffered_spans = self._trace_buffers.pop(trace_id, None)
+            self._forget_active_trace(trace_id)
+
+        spans = buffered_spans if buffered_spans is not None else self.exporter.spans
+        self.exporter.export_run(build_run_from_trace(trace, spans, self.exporter.config))
 
     def on_span_start(self, span: object) -> None:
         """Accept span lifecycle callbacks for SDK compatibility."""
 
     def on_span_end(self, span: object) -> None:
         """Map a completed runtime span to the canonical OpsCanvas span contract."""
-        self.exporter.export([map_agents_span(span, self.exporter.config)])
+        mapped_span = map_agents_span(span, self.exporter.config)
+        trace_id = _span_trace_id(span) or self._current_trace_id()
+        if trace_id is not None and trace_id in self._trace_buffers:
+            if mapped_span.run_id != trace_id:
+                mapped_span = mapped_span.model_copy(update={"run_id": trace_id})
+            self._trace_buffers[trace_id].append(mapped_span)
+
+        self.exporter.export([mapped_span])
 
     def force_flush(self) -> None:
         return self.exporter.force_flush()
 
     def shutdown(self) -> None:
         self.exporter.shutdown()
+
+    def _current_trace_id(self) -> str | None:
+        if self._active_trace_ids:
+            return self._active_trace_ids[-1]
+        return None
+
+    def _forget_active_trace(self, trace_id: str) -> None:
+        for index in range(len(self._active_trace_ids) - 1, -1, -1):
+            if self._active_trace_ids[index] == trace_id:
+                del self._active_trace_ids[index]
+                return
 
 
 def map_agents_span(span: object, config: OpsCanvasConfig | None = None) -> Span:
@@ -96,6 +127,14 @@ def build_run_from_trace(
         spans=run_spans,
         metadata=_run_metadata(trace),
     )
+
+
+def _trace_id(trace: object) -> str | None:
+    return _optional_string(_first_present(trace, ("trace_id", "id", "run_id")))
+
+
+def _span_trace_id(span: object) -> str | None:
+    return _optional_string(_first_present(span, ("trace_id", "run_id")))
 
 
 def _span_kind(span_data: object) -> SpanKind:

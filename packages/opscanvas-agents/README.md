@@ -39,3 +39,10 @@ pip install "opscanvas-agents[openai-agents]"
 The run builder maps only public-looking trace fields such as IDs, names, and
 timestamps. As a skeleton limitation, completed traces default to `succeeded`
 unless trace or span attributes clearly indicate failure.
+
+The processor buffers completed spans between `on_trace_start()` and
+`on_trace_end()` by public trace/run ID, then exports one canonical `Run` from
+that buffer. If a span arrives without a matching trace start, the processor
+keeps the safe standalone behavior: it maps the span and records it through the
+exporter without crashing, so later integrations can still inspect the span even
+when a runtime omits lifecycle callbacks.

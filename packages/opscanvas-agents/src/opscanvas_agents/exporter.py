@@ -16,7 +16,7 @@ class _RunIngestClient(Protocol):
 
 
 class OpsCanvasExporter:
-    """Collect mapped payloads and optionally send completed runs."""
+    """Collect mapped spans and optionally send completed canonical runs."""
 
     def __init__(
         self,
@@ -40,7 +40,7 @@ class OpsCanvasExporter:
         self.spans.extend(spans)
 
     def export_run(self, run: Run) -> None:
-        """Record a completed run and send it when network export is enabled."""
+        """Record a completed canonical run and send it when network export is enabled."""
         if self._shutdown:
             return
 
