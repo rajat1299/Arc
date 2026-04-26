@@ -30,6 +30,7 @@ class FakeSpan:
     started_at: object
     ended_at: object
     span_data: FakeSpanData
+    error: object | None = None
 
 
 @dataclass
@@ -211,4 +212,31 @@ def test_build_run_from_trace_marks_clear_failures_failed() -> None:
         OpsCanvasConfig(),
     )
 
+    assert run.status is RunStatus.failed
+
+
+def test_build_run_from_trace_marks_span_errors_failed() -> None:
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    mapped_span = map_agents_span(
+        FakeSpan(
+            "span_tool",
+            "trace_123",
+            None,
+            timestamp,
+            timestamp,
+            FakeSpanData("function", tool_name="search"),
+            error={"message": "tool failed", "data": {"retryable": False}},
+        )
+    )
+
+    run = build_run_from_trace(
+        FakeTrace("trace_123", "refund assistant", timestamp, timestamp),
+        [mapped_span],
+        OpsCanvasConfig(),
+    )
+
+    assert mapped_span.attributes["error"] == {
+        "message": "tool failed",
+        "data": {"retryable": False},
+    }
     assert run.status is RunStatus.failed

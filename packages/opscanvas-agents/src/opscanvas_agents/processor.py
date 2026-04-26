@@ -50,6 +50,9 @@ def map_agents_span(span: object, config: OpsCanvasConfig | None = None) -> Span
     effective_config = config or OpsCanvasConfig.from_env()
     span_data = _get(span, "span_data", None)
     attributes = _attributes_for(effective_config, span_data)
+    error = _span_error(span)
+    if error is not None:
+        attributes["error"] = _json_value(error)
 
     return Span(
         id=_string_or_generated(_first_present(span, ("span_id", "id")), generate_span_id),
@@ -144,6 +147,28 @@ def _attributes_for(config: OpsCanvasConfig, span_data: object) -> dict[str, Jso
         attributes["model"] = model
 
     return attributes
+
+
+def _span_error(span: object) -> object:
+    error = _get(span, "error", None)
+    if error is not None:
+        return error
+
+    exported = _call_public_export(span)
+    if isinstance(exported, dict):
+        return exported.get("error")
+    return None
+
+
+def _call_public_export(span: object) -> object:
+    export = _get(span, "export", None)
+    if not callable(export):
+        return None
+
+    try:
+        return export()
+    except Exception:
+        return None
 
 
 def _run_status(trace: object, spans: Iterable[Span]) -> RunStatus:
