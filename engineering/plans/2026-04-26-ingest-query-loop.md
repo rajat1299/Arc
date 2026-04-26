@@ -1,0 +1,206 @@
+# Ingest Query Loop Implementation Plan
+
+> **For implementers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development where code behavior is introduced. Every implementation task must commit its initial work before review, then commit any review fixes separately. Report all commit SHAs.
+
+**Goal:** Turn the foundation scaffold into a local end-to-end ingest/query loop without jumping to production database persistence.
+
+**Architecture:** The API owns an in-memory `RunStore` that stores canonical `Run` payloads and exposes query endpoints. The OpenAI Agents plugin can build canonical `Run` payloads from traced spans and optionally submit them to the API through a small HTTP client with injectable transport. The web shell uses query-shaped data with a safe mock fallback so the UI tracks the backend contract before live persistence exists.
+
+**Tech Stack:** Python 3.12, FastAPI, Pydantic v2, pytest, httpx, uv workspace, Next.js 15, React 19, TypeScript, pnpm.
+
+**Reference Docs:** Local-only docs live at `/Users/rajattiwari/mycelium 2/opscanvas/docs/`. Workers must read or receive relevant excerpts from `ENGINEERING.md`, `SDK_REUSE.md`, `RESEARCH_AND_REUSE_GUIDE.md`, and `DESIGN.md` where applicable. Do not commit local-only docs.
+
+---
+
+## Execution Rules
+
+- Work in `/Users/rajattiwari/.config/superpowers/worktrees/Arc/ingest-query-loop` unless told otherwise.
+- Do not touch `/Users/rajattiwari/mycelium 2/opscanvas/docs`; it is ignored local reference material.
+- Do not copy competitor code. Use the research guide for patterns and local paths only.
+- Keep each task scoped to its listed files. If a task needs another file, state why in the final report.
+- Stage only files owned by the task. Do not stage unrelated working tree changes.
+- Commit after initial implementation and after each review-fix round.
+- Run the listed verification commands before each commit. If a command cannot run because tooling is absent, report the exact blocker.
+
+## Task 1: API In-Memory Run Store And Query Endpoints
+
+**Purpose:** Make the ingest API persist accepted canonical runs for the lifetime of the process and expose read/query endpoints for the UI and future eval/replay work.
+
+**Files:**
+- Create: `services/api/src/opscanvas_api/store.py`
+- Create: `services/api/src/opscanvas_api/routes/runs.py`
+- Modify: `services/api/src/opscanvas_api/app.py`
+- Modify: `services/api/src/opscanvas_api/routes/ingest.py`
+- Create: `services/api/tests/factories.py`
+- Modify: `services/api/tests/test_ingest.py`
+- Create: `services/api/tests/test_runs.py`
+- Modify: `services/api/README.md`
+
+**API Requirements:**
+- `POST /v1/ingest/runs` stores the submitted `Run` in an in-memory store and still returns `202`.
+- `GET /v1/runs` returns run summaries sorted by `started_at` descending.
+- `GET /v1/runs` supports filters: `status`, `runtime`, `tenant_id`, `environment`, and `limit`.
+- `GET /v1/runs/{run_id}` returns the full canonical `Run`.
+- `GET /v1/runs/{run_id}/spans` returns the run's spans.
+- Unknown run IDs return `404` with a clear error.
+- Duplicate run IDs replace the prior run. This is deliberate for local/dev idempotency and should be documented in code or README.
+- Use process-local memory only. No database writes, auth, queues, pricing, redaction, or background workers.
+- Keep types strict. Do not loosen `opscanvas-core` validation.
+
+**Implementation Notes:**
+- Prefer a small `RunStore` protocol/class and `InMemoryRunStore` implementation.
+- Attach the store to `app.state` in `create_app()` and expose a dependency helper to routes.
+- Response models can live in route modules for now.
+- Summaries should include: `id`, `schema_version`, `status`, `runtime`, `started_at`, `ended_at`, `tenant_id`, `environment`, `workflow_name`, `span_count`, `event_count`, `cost_usd`, `total_tokens`.
+- Reuse test factories so future tasks do not hand-roll invalid payloads.
+
+**Verification Commands:**
+- `uv run pytest services/api/tests packages/opscanvas-core/tests -q`
+- `uv run ruff check services/api packages/opscanvas-core`
+- `uv run mypy services/api/src packages/opscanvas-core/src`
+
+**Expected Result:** A posted run is queryable through API routes in the same process.
+
+## Task 2: OpsCanvas Agents Run Builder And HTTP Client
+
+**Purpose:** Give the plugin a tested way to produce canonical `Run` payloads and submit them to the API without relying on network calls in tests.
+
+**Files:**
+- Modify: `packages/opscanvas-agents/pyproject.toml`
+- Create: `packages/opscanvas-agents/src/opscanvas_agents/client.py`
+- Modify: `packages/opscanvas-agents/src/opscanvas_agents/exporter.py`
+- Modify: `packages/opscanvas-agents/src/opscanvas_agents/processor.py`
+- Modify: `packages/opscanvas-agents/src/opscanvas_agents/__init__.py`
+- Create: `packages/opscanvas-agents/tests/test_client.py`
+- Modify: `packages/opscanvas-agents/tests/test_processor_mapping.py`
+- Modify: `packages/opscanvas-agents/README.md`
+- Modify: `uv.lock` if generated by `uv sync`.
+
+**Plugin Requirements:**
+- Add `httpx` as a dependency for `opscanvas-agents`.
+- Add `OpsCanvasClient.ingest_run(run: Run)` that POSTs to `{endpoint}/v1/ingest/runs`.
+- Client tests must use `httpx.MockTransport` or equivalent. No real network calls.
+- The client must serialize `Run` with `mode="json"` and `by_alias=True`.
+- Raise a clear custom exception or `RuntimeError` for non-2xx API responses; do not swallow failures silently.
+- Add an exporter method that records completed runs in memory and, when configured to send, uses the client.
+- Keep default behavior network-free unless explicitly enabled through config or constructor. The plugin skeleton must remain safe in tests.
+- Keep OpenAI Agents SDK optional and lazily imported only inside setup code.
+
+**Run Builder Requirements:**
+- Provide a conservative helper that builds a `Run` from a duck-typed trace plus mapped spans.
+- Map trace ID/name/runtime safely from public-looking attributes only.
+- Use `runtime="openai-agents"` and `environment` / `project_id` from `OpsCanvasConfig`.
+- Default status can be `succeeded` for completed traces unless the trace/span attributes clearly indicate failure; document this as a skeleton limitation.
+
+**Verification Commands:**
+- `uv sync --all-packages`
+- `uv run pytest packages/opscanvas-agents/tests packages/opscanvas-core/tests -q`
+- `uv run ruff check packages/opscanvas-agents packages/opscanvas-core`
+- `uv run mypy packages/opscanvas-agents/src packages/opscanvas-core/src`
+
+**Expected Result:** The plugin can create and submit canonical run payloads through a tested, injectable HTTP client while remaining network-free by default.
+
+## Task 3: Processor Trace Lifecycle Buffering
+
+**Purpose:** Wire the plugin processor lifecycle into the run builder so a trace start/end can emit a complete canonical run made of buffered spans.
+
+**Files:**
+- Modify: `packages/opscanvas-agents/src/opscanvas_agents/processor.py`
+- Modify: `packages/opscanvas-agents/src/opscanvas_agents/exporter.py`
+- Create: `packages/opscanvas-agents/tests/test_processor_lifecycle.py`
+- Modify: `packages/opscanvas-agents/README.md`
+
+**Processor Requirements:**
+- `on_trace_start(trace)` initializes a trace buffer keyed by trace/run ID.
+- `on_span_end(span)` maps spans and buffers them under the correct trace/run ID.
+- `on_trace_end(trace)` builds a `Run` from buffered spans and hands it to the exporter.
+- If spans arrive without a matching trace start, keep existing safe behavior: map/export or buffer without crashing. Document the fallback.
+- `force_flush()` and `shutdown()` continue to follow public SDK-style `None` returns.
+- Do not import private OpenAI Agents internals.
+- Tests must use fake trace/span objects and no network calls.
+
+**Verification Commands:**
+- `uv run pytest packages/opscanvas-agents/tests packages/opscanvas-core/tests -q`
+- `uv run ruff check packages/opscanvas-agents packages/opscanvas-core`
+- `uv run mypy packages/opscanvas-agents/src packages/opscanvas-core/src`
+
+**Expected Result:** A fake trace with fake spans produces one canonical `Run` with the expected spans.
+
+## Task 4: Web Query Data Boundary
+
+**Purpose:** Align the web shell with the API query shape while keeping the page usable when the API is not running.
+
+**Files:**
+- Create: `web/app/data.ts`
+- Modify: `web/app/page.tsx`
+- Modify: `web/app/globals.css` only if layout adjustment is required.
+- Modify: `web/README.md`
+- Modify: `web/package.json` only if needed for scripts.
+
+**UI/Data Requirements:**
+- Move static mock run/span/summary data into `web/app/data.ts`.
+- Define TypeScript types that mirror the API run summary enough for the current UI.
+- Add a server-side fetch helper that reads `OPSCANVAS_API_BASE_URL` and fetches `/v1/runs`.
+- If the API is unavailable or returns an error, fall back to the static mock data without crashing.
+- The first screen must remain a usable product shell, not a loading or error-only page.
+- Preserve Task 6 design constraints: dark default, dense layout, semantic run table, no marketing copy, no decorative gradients/orbs, no copied screenshot assets.
+- Do not introduce client-side state management or a frontend data library yet.
+
+**Verification Commands:**
+- `pnpm --filter web lint`
+- `pnpm --filter web typecheck`
+- `pnpm --filter web build`
+- If feasible, run a quick local page load with and without API URL set and report results.
+
+**Expected Result:** The web shell has a clear data boundary and can later consume real API data with minimal churn.
+
+## Task 5: Local End-To-End Smoke Script And Docs
+
+**Purpose:** Give engineers one command sequence to prove API ingest/query and web fallback behavior locally.
+
+**Files:**
+- Create: `scripts/smoke_ingest.py`
+- Modify: `README.md`
+- Modify: `services/api/README.md`
+- Modify: `web/README.md`
+- Modify: `Makefile`
+
+**Requirements:**
+- `scripts/smoke_ingest.py` should build a canonical sample `Run`, POST it to the local API, then query `/v1/runs` and `/v1/runs/{run_id}`.
+- Use standard library HTTP or `httpx` only if already available in the workspace.
+- Default API URL: `http://127.0.0.1:8000`.
+- The script should print concise status lines and exit nonzero on failed requests.
+- README docs should describe:
+  - Start API locally.
+  - Run smoke ingest.
+  - Start web locally.
+  - Optional `OPSCANVAS_API_BASE_URL` for web.
+- Add a `make smoke-ingest` target that runs the script.
+- Do not make smoke ingest part of `make verify`, because it requires a running API server.
+
+**Verification Commands:**
+- `uv run python scripts/smoke_ingest.py --help` if the script supports help, otherwise a dry-run/unit-test alternative.
+- `make verify`
+- `pnpm --filter web build`
+- `uv run pytest services/api/tests packages/opscanvas-core/tests packages/opscanvas-agents/tests -q`
+
+**Expected Result:** A developer can run the API, post a sample run, query it back, and point the web shell at the API.
+
+## Task 6: Final Integration Review
+
+**Purpose:** Confirm the ingest/query loop is coherent as a branch.
+
+**Files:**
+- Modify as needed after review only.
+
+**Review Checklist:**
+- All code is committed on `ingest-query-loop`.
+- `make verify` passes.
+- Python tests/lint/typecheck pass across current packages/services.
+- Web lint/typecheck/build pass.
+- API routes are coherent and documented.
+- Plugin remains optional-SDK and network-free by default.
+- Web remains visually aligned with design constraints.
+- No local-only docs or design screenshots are committed.
+
+**Expected Result:** Branch is ready to merge into `main` as the next implementation slice.
