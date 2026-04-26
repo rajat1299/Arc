@@ -210,24 +210,44 @@ export default function Page() {
               <h2>Runs</h2>
               <span>Failed view</span>
             </div>
-            <div className="run-table" role="table" aria-label="Recent runs">
-              {runs.map((run) => (
-                <div className="run-row" role="row" key={run.id}>
-                  <div className="run-primary">
-                    <StatusDot status={run.status} />
-                    <div>
-                      <strong>{run.name}</strong>
-                      <span>{run.id}</span>
-                    </div>
-                  </div>
-                  <span>{run.tenant}</span>
-                  <span>{run.runtime}</span>
-                  <span>{run.duration}</span>
-                  <span>{run.cost}</span>
-                  <span>{run.started}</span>
-                </div>
-              ))}
-            </div>
+            <table className="run-table" aria-label="Recent runs">
+              <thead>
+                <tr>
+                  <th scope="col">Status</th>
+                  <th scope="col">Run</th>
+                  <th scope="col">Tenant</th>
+                  <th scope="col">Runtime</th>
+                  <th scope="col">Duration</th>
+                  <th scope="col">Cost</th>
+                  <th scope="col">Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((run) => (
+                  <tr key={run.id}>
+                    <td>
+                      <span className="status-label">
+                        <StatusDot status={run.status} />
+                        {run.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="run-primary">
+                        <div>
+                          <strong>{run.name}</strong>
+                          <span>{run.id}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{run.tenant}</td>
+                    <td>{run.runtime}</td>
+                    <td>{run.duration}</td>
+                    <td>{run.cost}</td>
+                    <td>{run.started}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </section>
 
           <section className="span-panel" aria-label="Span tree and waterfall">
