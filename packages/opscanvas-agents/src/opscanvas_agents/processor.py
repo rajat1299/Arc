@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
-from opscanvas_core import Span, SpanKind, generate_run_id, generate_span_id
+from opscanvas_core import Run, RunStatus, Span, SpanKind, generate_run_id, generate_span_id
 from pydantic import JsonValue
 
 from opscanvas_agents.config import OpsCanvasConfig
@@ -27,6 +27,9 @@ class OpsCanvasProcessor:
 
     def on_trace_end(self, trace: object) -> None:
         """Accept trace lifecycle callbacks for SDK compatibility."""
+        self.exporter.export_run(
+            build_run_from_trace(trace, self.exporter.spans, self.exporter.config)
+        )
 
     def on_span_start(self, span: object) -> None:
         """Accept span lifecycle callbacks for SDK compatibility."""
@@ -59,6 +62,36 @@ def map_agents_span(span: object, config: OpsCanvasConfig | None = None) -> Span
         input=_json_value(_get(span_data, "input", None)),
         output=_json_value(_get(span_data, "output", None)),
         attributes=attributes,
+    )
+
+
+def build_run_from_trace(
+    trace: object,
+    spans: Iterable[Span],
+    config: OpsCanvasConfig | None = None,
+) -> Run:
+    """Build a conservative OpsCanvas run from a runtime trace and mapped spans.
+
+    This skeleton treats completed traces as succeeded unless public-looking
+    trace/span attributes clearly indicate failure.
+    """
+    effective_config = config or OpsCanvasConfig.from_env()
+    span_list = list(spans)
+    trace_id = _optional_string(_first_present(trace, ("trace_id", "id", "run_id")))
+    run_id = trace_id or (span_list[0].run_id if span_list else generate_run_id())
+    run_spans = [span for span in span_list if span.run_id == run_id]
+
+    return Run(
+        id=run_id,
+        status=_run_status(trace, run_spans),
+        started_at=_run_started_at(trace, run_spans),
+        ended_at=_run_ended_at(trace, run_spans),
+        runtime="openai-agents",
+        project_id=effective_config.project_id,
+        environment=effective_config.environment,
+        workflow_name=_optional_string(_first_present(trace, ("name", "workflow_name"))),
+        spans=run_spans,
+        metadata=_run_metadata(trace),
     )
 
 
@@ -111,6 +144,53 @@ def _attributes_for(config: OpsCanvasConfig, span_data: object) -> dict[str, Jso
         attributes["model"] = model
 
     return attributes
+
+
+def _run_status(trace: object, spans: Iterable[Span]) -> RunStatus:
+    status = _optional_string(_first_present(trace, ("status", "state", "outcome")))
+    if status is not None and status.lower() in {"failed", "failure", "error"}:
+        return RunStatus.failed
+    if _first_present(trace, ("error", "exception")) is not None:
+        return RunStatus.failed
+
+    for span in spans:
+        span_status = span.attributes.get("status")
+        if isinstance(span_status, str) and span_status.lower() in {"failed", "failure", "error"}:
+            return RunStatus.failed
+        if "error" in span.attributes or "exception" in span.attributes:
+            return RunStatus.failed
+
+    return RunStatus.succeeded
+
+
+def _run_started_at(trace: object, spans: list[Span]) -> datetime:
+    explicit_started_at = _optional_datetime(_first_present(trace, ("started_at", "start_time")))
+    if explicit_started_at is not None:
+        return explicit_started_at
+    if spans:
+        return min(span.started_at for span in spans)
+    return datetime.now(UTC)
+
+
+def _run_ended_at(trace: object, spans: list[Span]) -> datetime | None:
+    explicit_ended_at = _optional_datetime(_first_present(trace, ("ended_at", "end_time")))
+    if explicit_ended_at is not None:
+        return explicit_ended_at
+
+    ended_at_values = [span.ended_at for span in spans if span.ended_at is not None]
+    if ended_at_values:
+        return max(ended_at_values)
+    return None
+
+
+def _run_metadata(trace: object) -> dict[str, JsonValue]:
+    metadata: dict[str, JsonValue] = {
+        "runtime": "openai-agents",
+    }
+    group_id = _optional_string(_first_present(trace, ("group_id", "trace_group_id")))
+    if group_id is not None:
+        metadata["group_id"] = group_id
+    return metadata
 
 
 def _data_type(span_data: object) -> str:

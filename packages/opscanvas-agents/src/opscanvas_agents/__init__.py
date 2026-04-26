@@ -5,15 +5,20 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Protocol, cast
 
+from opscanvas_agents.client import OpsCanvasClient, OpsCanvasClientError
 from opscanvas_agents.config import OpsCanvasConfig
 from opscanvas_agents.exporter import OpsCanvasExporter
-from opscanvas_agents.processor import OpsCanvasProcessor
+from opscanvas_agents.processor import OpsCanvasProcessor, build_run_from_trace, map_agents_span
 
 __all__ = [
     "OpsCanvasConfig",
+    "OpsCanvasClient",
+    "OpsCanvasClientError",
     "OpsCanvasExporter",
     "OpsCanvasProcessor",
+    "build_run_from_trace",
     "configure_opscanvas",
+    "map_agents_span",
 ]
 
 

@@ -2,8 +2,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from opscanvas_agents import OpsCanvasConfig, OpsCanvasExporter, OpsCanvasProcessor
-from opscanvas_core import SpanKind
+from opscanvas_agents import (
+    OpsCanvasConfig,
+    OpsCanvasExporter,
+    OpsCanvasProcessor,
+    build_run_from_trace,
+    map_agents_span,
+)
+from opscanvas_core import RunStatus, SpanKind
 
 
 @dataclass
@@ -24,6 +30,15 @@ class FakeSpan:
     started_at: object
     ended_at: object
     span_data: FakeSpanData
+
+
+@dataclass
+class FakeTrace:
+    trace_id: str
+    name: str
+    started_at: object
+    ended_at: object
+    error: str | None = None
 
 
 def test_processor_maps_known_openai_agents_span_types() -> None:
@@ -117,3 +132,83 @@ def test_exporter_and_processor_flush_methods_follow_sdk_none_contract() -> None
     assert exporter.export([]) is None
     assert exporter.force_flush() is None
     assert processor.force_flush() is None
+
+
+def test_build_run_from_trace_maps_public_trace_fields_and_config() -> None:
+    config = OpsCanvasConfig(project_id="project_123", environment="test")
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    span = FakeSpan(
+        "span_model",
+        "trace_123",
+        None,
+        timestamp,
+        timestamp,
+        FakeSpanData("generation", model="gpt-5.1"),
+    )
+    mapped_span = OpsCanvasProcessor(exporter=OpsCanvasExporter(config=config)).exporter
+    mapped_span.export([build_span := map_agents_span(span, config)])
+
+    run = build_run_from_trace(
+        FakeTrace("trace_123", "refund assistant", timestamp, timestamp),
+        mapped_span.spans,
+        config,
+    )
+
+    assert run.id == "trace_123"
+    assert run.runtime == "openai-agents"
+    assert run.workflow_name == "refund assistant"
+    assert run.project_id == "project_123"
+    assert run.environment == "test"
+    assert run.status is RunStatus.succeeded
+    assert run.spans == [build_span]
+
+
+def test_exporter_records_completed_runs_without_network_by_default() -> None:
+    exporter = OpsCanvasExporter()
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    processor = OpsCanvasProcessor(exporter=exporter)
+
+    processor.on_span_end(
+        FakeSpan(
+            "span_model",
+            "trace_123",
+            None,
+            timestamp,
+            timestamp,
+            FakeSpanData("generation", model="gpt-5.1"),
+        )
+    )
+    processor.on_trace_end(FakeTrace("trace_123", "refund assistant", timestamp, timestamp))
+
+    assert len(exporter.runs) == 1
+    assert exporter.runs[0].id == "trace_123"
+    assert exporter.runs[0].spans == exporter.spans
+
+
+def test_exporter_sends_completed_runs_when_enabled() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.runs: list[object] = []
+
+        def ingest_run(self, run: object) -> None:
+            self.runs.append(run)
+
+    client = FakeClient()
+    exporter = OpsCanvasExporter(client=client, send_runs=True)
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    processor = OpsCanvasProcessor(exporter=exporter)
+
+    processor.on_trace_end(FakeTrace("trace_123", "refund assistant", timestamp, timestamp))
+
+    assert exporter.runs == client.runs
+
+
+def test_build_run_from_trace_marks_clear_failures_failed() -> None:
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    run = build_run_from_trace(
+        FakeTrace("trace_123", "refund assistant", timestamp, timestamp, error="tool failed"),
+        [],
+        OpsCanvasConfig(),
+    )
+
+    assert run.status is RunStatus.failed
