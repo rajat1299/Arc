@@ -11,10 +11,15 @@ mock data from `web/app/data.ts` so the first screen remains usable.
 
 ## Local API Data
 
-Start the API and seed it with a sample run:
+Start the API in one terminal:
 
 ```sh
 uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+```
+
+In another terminal, seed it with a sample run:
+
+```sh
 make smoke-ingest
 ```
 

@@ -8,10 +8,10 @@ in-memory ingest/query API, and a minimal web shell with API fallback behavior.
 
 ## Layout
 
-- `packages/opscanvas-core/`: shared Python package, currently version-only.
-- `packages/opscanvas-agents/`: placeholder for the future OpenAI Agents plugin.
-- `services/api/`: placeholder for the future hosted API service.
-- `web/`: placeholder for the future Next.js app.
+- `packages/opscanvas-core/`: shared Python contracts for canonical runs, spans, events, and schema versions.
+- `packages/opscanvas-agents/`: OpenAI Agents SDK tracing processor, exporter, and ingest client.
+- `services/api/`: FastAPI service with local in-memory ingest and run query routes.
+- `web/`: Next.js shell that reads API run summaries when configured and falls back to static data.
 - `infra/`: placeholder for future local development infrastructure.
 
 ## Local Docs Policy
