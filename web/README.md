@@ -9,6 +9,23 @@ The shell reads `OPSCANVAS_API_BASE_URL` on the server and fetches
 an error, or returns an unexpected payload shape, the page falls back to static
 mock data from `web/app/data.ts` so the first screen remains usable.
 
+## Local API Data
+
+Start the API and seed it with a sample run:
+
+```sh
+uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+make smoke-ingest
+```
+
+Then start the web shell with the API base URL:
+
+```sh
+OPSCANVAS_API_BASE_URL=http://127.0.0.1:8000 pnpm --filter web dev
+```
+
+Leave `OPSCANVAS_API_BASE_URL` unset to exercise the static fallback behavior.
+
 ## Commands
 
 - `pnpm --filter web dev`

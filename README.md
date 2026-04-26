@@ -3,9 +3,8 @@
 Engineering home for the Arc surface in the OpsCanvas -> Arc -> Atrium stack.
 
 This repository is currently a foundation scaffold for shared OpsCanvas/Arc
-tooling. It provides the monorepo layout, deterministic Python commands, and
-placeholder package/service/app directories. It does not yet implement product
-behavior, ingest APIs, storage schemas, or a frontend app.
+tooling. It provides the monorepo layout, deterministic Python commands, a local
+in-memory ingest/query API, and a minimal web shell with API fallback behavior.
 
 ## Layout
 
@@ -23,20 +22,55 @@ reference docs to this repository.
 
 ## First Commands
 
-Install and verify the Python workspace:
+Install and verify the workspace:
 
 ```sh
 uv sync --all-packages
+pnpm install
 make verify
 ```
 
 Useful focused commands:
 
 ```sh
+uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+make smoke-ingest
+pnpm --filter web dev
 uv run pytest packages/opscanvas-core/tests -q
 uv run ruff check .
 uv run mypy packages/opscanvas-core/src
 pnpm run verify
+```
+
+## Local Ingest Smoke
+
+Start the API in one terminal:
+
+```sh
+uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+```
+
+Then post and query a canonical sample run:
+
+```sh
+make smoke-ingest
+```
+
+The smoke script defaults to `http://127.0.0.1:8000`. Use
+`uv run python scripts/smoke_ingest.py --api-url http://127.0.0.1:8001` when the
+API is on a different port.
+
+Start the web shell separately:
+
+```sh
+pnpm --filter web dev
+```
+
+By default the web shell uses static fallback data. To point it at the local API,
+set `OPSCANVAS_API_BASE_URL` before starting Next.js:
+
+```sh
+OPSCANVAS_API_BASE_URL=http://127.0.0.1:8000 pnpm --filter web dev
 ```
 
 ## Repository

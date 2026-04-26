@@ -17,3 +17,23 @@ The run store is process-local memory only. It does not write to a database, que
 redaction pipeline, auth layer, or pricing engine. Submitting a duplicate run ID
 replaces the prior in-memory run deliberately so local/dev ingestion can be retried
 idempotently.
+
+## Local Smoke
+
+Start the API from the repository root:
+
+```sh
+uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+```
+
+In another terminal, post a canonical sample run and query it back:
+
+```sh
+make smoke-ingest
+```
+
+The smoke script targets `http://127.0.0.1:8000` by default. Override it with:
+
+```sh
+uv run python scripts/smoke_ingest.py --api-url http://127.0.0.1:8001
+```

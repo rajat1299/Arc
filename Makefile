@@ -1,4 +1,4 @@
-.PHONY: test lint typecheck frontend verify
+.PHONY: test lint typecheck frontend smoke-ingest verify
 
 test:
 	uv run pytest packages/opscanvas-core/tests services/api/tests packages/opscanvas-agents/tests -q
@@ -16,5 +16,8 @@ frontend:
 	else \
 		echo "web/package.json not found; skipping frontend checks"; \
 	fi
+
+smoke-ingest:
+	uv run python scripts/smoke_ingest.py
 
 verify: test lint typecheck frontend
