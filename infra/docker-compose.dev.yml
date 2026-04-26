@@ -1,0 +1,55 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.3
+    container_name: opscanvas-clickhouse-dev
+    environment:
+      CLICKHOUSE_DB: opscanvas
+      CLICKHOUSE_USER: opscanvas
+      CLICKHOUSE_PASSWORD: opscanvas_dev_password
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/001_runs_spans_events.sql:/docker-entrypoint-initdb.d/001_runs_spans_events.sql:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "opscanvas", "--password", "opscanvas_dev_password", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16
+    container_name: opscanvas-postgres-dev
+    environment:
+      POSTGRES_DB: opscanvas
+      POSTGRES_USER: opscanvas
+      POSTGRES_PASSWORD: opscanvas_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/001_metadata.sql:/docker-entrypoint-initdb.d/001_metadata.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opscanvas -d opscanvas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: opscanvas-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  clickhouse_data:
+  postgres_data:
+  redis_data:
