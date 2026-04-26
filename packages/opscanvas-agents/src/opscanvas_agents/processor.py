@@ -50,7 +50,7 @@ class OpsCanvasProcessor:
     def on_span_end(self, span: object) -> None:
         """Map a completed runtime span to the canonical OpsCanvas span contract."""
         mapped_span = map_agents_span(span, self.exporter.config)
-        trace_id = _span_trace_id(span) or self._current_trace_id()
+        trace_id = _span_trace_id(span) or self._single_active_trace_id()
         if trace_id is not None and trace_id in self._trace_buffers:
             if mapped_span.run_id != trace_id:
                 mapped_span = mapped_span.model_copy(update={"run_id": trace_id})
@@ -64,8 +64,8 @@ class OpsCanvasProcessor:
     def shutdown(self) -> None:
         self.exporter.shutdown()
 
-    def _current_trace_id(self) -> str | None:
-        if self._active_trace_ids:
+    def _single_active_trace_id(self) -> str | None:
+        if len(self._active_trace_ids) == 1:
             return self._active_trace_ids[-1]
         return None
 

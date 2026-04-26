@@ -42,7 +42,9 @@ unless trace or span attributes clearly indicate failure.
 
 The processor buffers completed spans between `on_trace_start()` and
 `on_trace_end()` by public trace/run ID, then exports one canonical `Run` from
-that buffer. If a span arrives without a matching trace start, the processor
-keeps the safe standalone behavior: it maps the span and records it through the
-exporter without crashing, so later integrations can still inspect the span even
+that buffer. If a span omits a public trace/run ID, the processor infers the
+active trace only when exactly one trace is active. Ambiguous spans, including
+spans that arrive without a matching trace start or while multiple traces
+overlap, keep the safe standalone behavior: they are mapped and recorded through
+the exporter without crashing, so later integrations can still inspect them even
 when a runtime omits lifecycle callbacks.
