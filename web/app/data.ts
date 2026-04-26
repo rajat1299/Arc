@@ -55,6 +55,8 @@ export type OpsCanvasData = {
   summary: SummaryMetric[];
 };
 
+const RUNS_FETCH_TIMEOUT_MS = 1500;
+
 const mockRuns: Run[] = [
   {
     id: "run_7f91c2",
@@ -208,9 +210,13 @@ export async function fetchRunSummaries(): Promise<ApiRunSummary[] | null> {
     return null;
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RUNS_FETCH_TIMEOUT_MS);
+
   try {
     const response = await fetch(new URL("/v1/runs", baseUrl), {
       cache: "no-store",
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -230,6 +236,8 @@ export async function fetchRunSummaries(): Promise<ApiRunSummary[] | null> {
     return payload;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -319,10 +327,10 @@ function isApiRunSummary(value: unknown): value is ApiRunSummary {
     (typeof value.tenant_id === "string" || value.tenant_id === null) &&
     (typeof value.environment === "string" || value.environment === null) &&
     (typeof value.workflow_name === "string" || value.workflow_name === null) &&
-    typeof value.span_count === "number" &&
-    typeof value.event_count === "number" &&
-    (typeof value.cost_usd === "number" || value.cost_usd === null) &&
-    (typeof value.total_tokens === "number" || value.total_tokens === null)
+    isNonNegativeInteger(value.span_count) &&
+    isNonNegativeInteger(value.event_count) &&
+    isNullableNonNegativeNumber(value.cost_usd) &&
+    isNullableNonNegativeInteger(value.total_tokens)
   );
 }
 
@@ -338,4 +346,16 @@ function isApiRunStatus(value: unknown): value is ApiRunStatus {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isNullableNonNegativeNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+}
+
+function isNullableNonNegativeInteger(value: unknown): value is number | null {
+  return value === null || isNonNegativeInteger(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 0;
 }
