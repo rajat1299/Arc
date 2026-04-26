@@ -2,3 +2,19 @@
 docs/
 
 .DS_Store
+.env
+.env.*
+!.env.example
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+dist/
+build/
+*.egg-info/
+node_modules/
+.pnpm-store/
+.next/
+coverage/
