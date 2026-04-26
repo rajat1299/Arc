@@ -6,6 +6,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.0",
     "mypy>=1.18.0",
     "pytest>=8.4.0",
     "ruff>=0.14.0",
@@ -15,7 +16,7 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["packages/opscanvas-core"]
+members = ["packages/opscanvas-core", "services/api"]
 
 [tool.ruff]
 line-length = 100
