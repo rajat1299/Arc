@@ -24,7 +24,8 @@ Credentials are intentionally local-dev only:
 - ClickHouse stores wide runtime analytics: `runs`, `spans`, `span_events`, and
   `scores`.
 - Postgres stores metadata and relational state: orgs, projects, environments,
-  API key hashes, budget policies, eval datasets, and prompt versions.
+  API key hashes, budget policies, eval datasets, prompt versions, and the
+  initial model pricing table format for the future cost engine.
 - Redis is only a queue/cache/rate-limit placeholder. It is not a durable domain
   store.
 

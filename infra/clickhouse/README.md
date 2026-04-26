@@ -26,5 +26,8 @@ Design notes:
 - Runtime-specific provider, model, tool, and service-tier fields are promoted
   only where they are expected to drive common filters, cost grouping, or
   pricing edge cases. Everything else stays in `attributes_json`.
+- Token and cost rollups include first-class cache, reasoning, audio, service
+  tier, and batch multiplier fields so the future cost engine can persist the
+  edge cases called out in the storage/cost spike.
 - This is not a production migration system. It is a reviewable schema seed for
   local development before persistence code exists.
