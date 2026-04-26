@@ -21,17 +21,15 @@ class OpsCanvasExporter:
         self.spans: list[Span] = []
         self._shutdown = False
 
-    def export(self, spans: Iterable[Span]) -> bool:
-        """Record spans in memory and report export success."""
+    def export(self, spans: Iterable[Span]) -> None:
+        """Record spans in memory."""
         if self._shutdown:
-            return False
+            return
 
         self.spans.extend(spans)
-        return True
 
-    def force_flush(self) -> bool:
+    def force_flush(self) -> None:
         """Match tracing exporter flush surfaces without network behavior."""
-        return not self._shutdown
 
     def shutdown(self) -> None:
         """Mark the exporter as closed."""

@@ -35,7 +35,7 @@ class OpsCanvasProcessor:
         """Map a completed runtime span to the canonical OpsCanvas span contract."""
         self.exporter.export([map_agents_span(span, self.exporter.config)])
 
-    def force_flush(self) -> bool:
+    def force_flush(self) -> None:
         return self.exporter.force_flush()
 
     def shutdown(self) -> None:
@@ -153,6 +153,11 @@ def _datetime_or_now(value: object) -> datetime:
 def _optional_datetime(value: object) -> datetime | None:
     if isinstance(value, datetime):
         return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
     return None
 
 

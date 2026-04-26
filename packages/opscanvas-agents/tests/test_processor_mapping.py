@@ -21,8 +21,8 @@ class FakeSpan:
     span_id: str
     trace_id: str
     parent_id: str | None
-    started_at: datetime
-    ended_at: datetime | None
+    started_at: object
+    ended_at: object
     span_data: FakeSpanData
 
 
@@ -87,5 +87,33 @@ def test_exporter_uses_config_metadata_and_stays_in_memory() -> None:
     assert exporter.spans[0].kind is SpanKind.guardrail
     assert exporter.spans[0].attributes["project_id"] == "project_123"
     assert exporter.spans[0].attributes["environment"] == "test"
-    assert exporter.force_flush() is True
+    assert exporter.force_flush() is None
     exporter.shutdown()
+
+
+def test_processor_preserves_iso_timestamp_strings() -> None:
+    exporter = OpsCanvasExporter()
+    processor = OpsCanvasProcessor(exporter=exporter)
+
+    processor.on_span_end(
+        FakeSpan(
+            "span_model",
+            "trace_123",
+            None,
+            "2026-01-01T00:00:01.123Z",
+            "2026-01-01T00:00:02.456+00:00",
+            FakeSpanData("generation", model="gpt-5.1"),
+        )
+    )
+
+    assert exporter.spans[0].started_at == datetime(2026, 1, 1, 0, 0, 1, 123000, tzinfo=UTC)
+    assert exporter.spans[0].ended_at == datetime(2026, 1, 1, 0, 0, 2, 456000, tzinfo=UTC)
+
+
+def test_exporter_and_processor_flush_methods_follow_sdk_none_contract() -> None:
+    exporter = OpsCanvasExporter()
+    processor = OpsCanvasProcessor(exporter=exporter)
+
+    assert exporter.export([]) is None
+    assert exporter.force_flush() is None
+    assert processor.force_flush() is None

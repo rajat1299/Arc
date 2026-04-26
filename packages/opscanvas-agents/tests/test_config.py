@@ -38,6 +38,16 @@ def test_importing_package_without_agents_sdk_works() -> None:
     assert package.OpsCanvasConfig is OpsCanvasConfig
 
 
-def test_configure_opscanvas_raises_clear_error_without_agents_sdk() -> None:
+def test_configure_opscanvas_raises_clear_error_without_agents_sdk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_import_error(name: str) -> object:
+        if name == "agents":
+            raise ImportError("No module named 'agents'")
+        return importlib.import_module(name)
+
+    package = importlib.import_module("opscanvas_agents")
+    monkeypatch.setattr(package, "import_module", raise_import_error)
+
     with pytest.raises(RuntimeError, match="pip install 'opscanvas-agents\\[openai-agents\\]'"):
         configure_opscanvas()
