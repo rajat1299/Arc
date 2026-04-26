@@ -1,6 +1,8 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
+from opscanvas_api.routes.runs import get_run_store
+from opscanvas_api.store import RunStore
 from opscanvas_core.events import Run
 from pydantic import BaseModel, ConfigDict
 
@@ -18,7 +20,8 @@ class AcceptedRun(BaseModel):
 
 
 @router.post("/runs", response_model=AcceptedRun, status_code=status.HTTP_202_ACCEPTED)
-def ingest_run(run: Run) -> AcceptedRun:
+def ingest_run(run: Run, run_store: Annotated[RunStore, Depends(get_run_store)]) -> AcceptedRun:
+    run_store.upsert(run)
     return AcceptedRun(
         status="accepted",
         run_id=run.id,
