@@ -1,162 +1,22 @@
-type RunStatus = "failed" | "running" | "succeeded" | "warning";
+import { type DisplayStatus, getOpsCanvasData } from "./data";
 
-type Run = {
-  id: string;
-  name: string;
-  tenant: string;
-  runtime: string;
-  model: string;
-  status: RunStatus;
-  duration: string;
-  cost: string;
-  tokens: string;
-  started: string;
-};
+export const dynamic = "force-dynamic";
 
-type Span = {
-  depth: number;
-  name: string;
-  kind: string;
-  runtime: string;
-  status: RunStatus;
-  duration: string;
-  cost: string;
-  offset: number;
-  width: number;
-};
+function statusTone(status: DisplayStatus) {
+  if (status === "suboptimal" || status === "interrupted") {
+    return "warning";
+  }
 
-const runs: Run[] = [
-  {
-    id: "run_7f91c2",
-    name: "refund-resolution",
-    tenant: "northstar",
-    runtime: "openai-agents",
-    model: "gpt-4.1",
-    status: "failed",
-    duration: "18.42s",
-    cost: "$0.43",
-    tokens: "42.8k",
-    started: "09:41:22",
-  },
-  {
-    id: "run_42be19",
-    name: "claims-triage",
-    tenant: "apex",
-    runtime: "langgraph",
-    model: "claude-3.7",
-    status: "running",
-    duration: "31.08s",
-    cost: "$0.71",
-    tokens: "64.1k",
-    started: "09:39:04",
-  },
-  {
-    id: "run_b803ab",
-    name: "renewal-router",
-    tenant: "evergreen",
-    runtime: "crewai",
-    model: "gpt-4.1-mini",
-    status: "warning",
-    duration: "09.77s",
-    cost: "$0.08",
-    tokens: "12.4k",
-    started: "09:36:48",
-  },
-  {
-    id: "run_31a64d",
-    name: "policy-audit",
-    tenant: "northstar",
-    runtime: "otel",
-    model: "gemini-2.5",
-    status: "succeeded",
-    duration: "06.12s",
-    cost: "$0.05",
-    tokens: "7.9k",
-    started: "09:34:10",
-  },
-];
-
-const spans: Span[] = [
-  {
-    depth: 0,
-    name: "RefundResolutionAgent",
-    kind: "agent",
-    runtime: "openai-agents",
-    status: "failed",
-    duration: "18.42s",
-    cost: "$0.43",
-    offset: 0,
-    width: 100,
-  },
-  {
-    depth: 1,
-    name: "classify_request",
-    kind: "model_call",
-    runtime: "gpt-4.1-mini",
-    status: "succeeded",
-    duration: "1.92s",
-    cost: "$0.03",
-    offset: 4,
-    width: 11,
-  },
-  {
-    depth: 1,
-    name: "lookup_order",
-    kind: "tool_call",
-    runtime: "mcp:orders",
-    status: "succeeded",
-    duration: "428ms",
-    cost: "$0.00",
-    offset: 17,
-    width: 4,
-  },
-  {
-    depth: 1,
-    name: "refund_policy_handoff",
-    kind: "handoff",
-    runtime: "langgraph",
-    status: "warning",
-    duration: "5.31s",
-    cost: "$0.12",
-    offset: 23,
-    width: 29,
-  },
-  {
-    depth: 2,
-    name: "currency_convert",
-    kind: "tool_call",
-    runtime: "mcp:finance",
-    status: "failed",
-    duration: "3.84s",
-    cost: "$0.01",
-    offset: 42,
-    width: 20,
-  },
-  {
-    depth: 1,
-    name: "draft_customer_reply",
-    kind: "model_call",
-    runtime: "gpt-4.1",
-    status: "succeeded",
-    duration: "6.88s",
-    cost: "$0.27",
-    offset: 60,
-    width: 37,
-  },
-];
-
-const summary = [
-  { label: "MTD spend", value: "$18,420", delta: "+12.4%" },
-  { label: "p95 latency", value: "24.8s", delta: "+3.1s" },
-  { label: "eval pass rate", value: "91.6%", delta: "-2.8%" },
-  { label: "failed runs", value: "43", delta: "+9" },
-];
-
-function StatusDot({ status }: { status: RunStatus }) {
-  return <span className={`status-dot ${status}`} aria-label={status} />;
+  return status;
 }
 
-export default function Page() {
+function StatusDot({ status }: { status: DisplayStatus }) {
+  return <span className={`status-dot ${statusTone(status)}`} aria-label={status} />;
+}
+
+export default async function Page() {
+  const { runs, spans, summary } = await getOpsCanvasData();
+
   return (
     <main className="ops-shell">
       <aside className="sidebar" aria-label="Workspace navigation">
@@ -263,7 +123,7 @@ export default function Page() {
             </div>
             <div className="span-table">
               {spans.map((span) => (
-                <div className={`span-row ${span.status}`} key={`${span.name}-${span.depth}`}>
+                <div className={`span-row ${statusTone(span.status)}`} key={`${span.name}-${span.depth}`}>
                   <div className="span-name" style={{ paddingLeft: `${span.depth * 18 + 8}px` }}>
                     <StatusDot status={span.status} />
                     <div>
