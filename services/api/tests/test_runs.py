@@ -105,6 +105,74 @@ def test_list_runs_filters_and_limits_summaries() -> None:
     assert [run["id"] for run in response.json()] == ["run_match_new"]
 
 
+def test_run_metrics_are_empty_for_empty_store() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/v1/runs/metrics")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_count": 0,
+        "failed_count": 0,
+        "running_count": 0,
+        "suboptimal_count": 0,
+        "total_cost_usd": 0.0,
+        "total_tokens": 0,
+        "p95_latency_ms": None,
+    }
+
+
+def test_run_metrics_aggregate_mixed_in_memory_runs() -> None:
+    client = TestClient(create_app())
+    runs = [
+        canonical_run_payload(
+            id="run_succeeded",
+            status="succeeded",
+            started_at="2026-01-01T00:00:00Z",
+            ended_at="2026-01-01T00:00:01Z",
+            usage={"total_tokens": 10, "cost_usd": 0.01},
+        ),
+        canonical_run_payload(
+            id="run_failed",
+            status="failed",
+            started_at="2026-01-01T00:00:00Z",
+            ended_at="2026-01-01T00:00:03Z",
+            usage={"total_tokens": 20, "cost_usd": 0.02},
+        ),
+        canonical_run_payload(
+            id="run_suboptimal",
+            status="suboptimal",
+            started_at="2026-01-01T00:00:00Z",
+            ended_at="2026-01-01T00:00:07Z",
+            usage={"total_tokens": 30, "cost_usd": 0.03},
+        ),
+        canonical_run_payload(
+            id="run_running",
+            status="running",
+            started_at="2026-01-01T00:00:00Z",
+            ended_at=None,
+            usage=None,
+        ),
+    ]
+
+    for run in runs:
+        ingest_response = client.post("/v1/ingest/runs", json=run)
+        assert ingest_response.status_code == 202
+
+    response = client.get("/v1/runs/metrics")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_count": 4,
+        "failed_count": 1,
+        "running_count": 1,
+        "suboptimal_count": 1,
+        "total_cost_usd": 0.06,
+        "total_tokens": 60,
+        "p95_latency_ms": 7000,
+    }
+
+
 def test_unknown_run_id_returns_clear_404() -> None:
     client = TestClient(create_app())
 

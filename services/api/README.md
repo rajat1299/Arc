@@ -10,6 +10,8 @@ Implemented routes:
   and event counts.
 - `GET /v1/runs` returns run summaries sorted by `started_at` descending. It supports
   `status`, `runtime`, `tenant_id`, `environment`, and `limit` query filters.
+- `GET /v1/runs/metrics` returns aggregate in-memory run counts, cost, tokens, and
+  p95 latency for local development dashboards.
 - `GET /v1/runs/{run_id}` returns the full canonical `Run`.
 - `GET /v1/runs/{run_id}/spans` returns the canonical spans for a run.
 
