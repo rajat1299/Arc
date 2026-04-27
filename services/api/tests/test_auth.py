@@ -29,6 +29,16 @@ def test_configured_api_keys_splits_commas_newlines_and_ignores_blanks() -> None
     assert configured_api_keys(settings) == ("first-key", "second-key", "third-key")
 
 
+def test_settings_reads_auth_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPSCANVAS_API_AUTH_ENABLED", "true")
+    monkeypatch.setenv("OPSCANVAS_API_API_KEYS", "alpha")
+
+    settings = Settings()
+
+    assert settings.auth_enabled is True
+    assert settings.api_keys == "alpha"
+
+
 def test_validate_api_key_accepts_only_configured_key() -> None:
     configured_keys = ("alpha", "beta")
 
@@ -73,6 +83,30 @@ def test_require_api_key_returns_principal_for_valid_bearer_token() -> None:
     expected = authenticate_api_key("beta", settings)
     assert expected is not None
     assert principal.key_id == expected.key_id
+
+
+def test_require_api_key_rejects_missing_bearer_token_with_real_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPSCANVAS_API_AUTH_ENABLED", "true")
+    monkeypatch.setenv("OPSCANVAS_API_API_KEYS", "alpha")
+
+    with pytest.raises(HTTPException) as exc_info:
+        require_api_key(settings=Settings(), authorization=None)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_require_api_key_accepts_valid_bearer_token_with_real_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPSCANVAS_API_AUTH_ENABLED", "true")
+    monkeypatch.setenv("OPSCANVAS_API_API_KEYS", "alpha")
+
+    principal = require_api_key(settings=Settings(), authorization="Bearer alpha")
+
+    assert isinstance(principal, ApiKeyPrincipal)
 
 
 def test_require_api_key_rejects_missing_bearer_token() -> None:

@@ -24,10 +24,9 @@ _BEARER_CHALLENGE = {"WWW-Authenticate": "Bearer"}
 
 
 def configured_api_keys(settings: Settings) -> tuple[str, ...]:
-    raw_api_keys = _settings_api_keys(settings)
     return tuple(
         key
-        for part in _SPLIT_API_KEYS_PATTERN.split(raw_api_keys)
+        for part in _SPLIT_API_KEYS_PATTERN.split(settings.api_keys)
         if (key := part.strip())
     )
 
@@ -50,7 +49,7 @@ def require_api_key(
     settings: Annotated[Settings, Depends(get_settings)],
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> ApiKeyPrincipal | None:
-    if not _settings_auth_enabled(settings):
+    if not settings.auth_enabled:
         return None
 
     configured_keys = configured_api_keys(settings)
@@ -91,13 +90,3 @@ def _unauthorized() -> HTTPException:
 def _key_id(token: str) -> str:
     digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
     return digest[:_KEY_ID_PREFIX_LENGTH]
-
-
-def _settings_auth_enabled(settings: Settings) -> bool:
-    value = getattr(settings, "auth_enabled", False)
-    return value if isinstance(value, bool) else False
-
-
-def _settings_api_keys(settings: Settings) -> str:
-    value = getattr(settings, "api_keys", "")
-    return value if isinstance(value, str) else ""
