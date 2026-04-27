@@ -1,0 +1,24 @@
+[project]
+name = "opscanvas-claude"
+version = "0.1.0"
+description = "Claude Agent SDK plugin skeleton for OpsCanvas."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.0",
+    "opscanvas-core",
+]
+
+[project.optional-dependencies]
+claude-agent-sdk = [
+    "claude-agent-sdk>=0.1.68,<0.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opscanvas_claude"]
+
+[tool.uv.sources]
+opscanvas-core = { workspace = true }

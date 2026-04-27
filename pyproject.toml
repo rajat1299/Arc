@@ -16,7 +16,12 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["packages/opscanvas-core", "packages/opscanvas-agents", "services/api"]
+members = [
+    "packages/opscanvas-core",
+    "packages/opscanvas-agents",
+    "packages/opscanvas-claude",
+    "services/api",
+]
 
 [tool.ruff]
 line-length = 100
