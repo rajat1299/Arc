@@ -14,8 +14,26 @@ function StatusDot({ status }: { status: DisplayStatus }) {
   return <span className={`status-dot ${statusTone(status)}`} aria-label={status} />;
 }
 
-export default async function Page() {
-  const { runs, spans, summary } = await getOpsCanvasData();
+type PageProps = {
+  searchParams?: Promise<{
+    runId?: string | string[];
+  }>;
+};
+
+function readRunId(params: { runId?: string | string[] } | undefined): string | undefined {
+  const runId = params?.runId;
+
+  if (Array.isArray(runId)) {
+    return runId[0];
+  }
+
+  return runId;
+}
+
+export default async function Page({ searchParams }: PageProps) {
+  const requestedRunId = readRunId(await searchParams);
+  const { runs, spans, summary, selectedRunId, selectedRun, selectedSpan, totalDuration } =
+    await getOpsCanvasData(requestedRunId);
 
   return (
     <main className="ops-shell">
@@ -42,11 +60,11 @@ export default async function Page() {
         <header className="topbar">
           <div>
             <p className="eyebrow">Trace detail</p>
-            <h1>refund-resolution</h1>
+            <h1>{selectedRun.name}</h1>
           </div>
           <label className="search">
             <span>Search</span>
-            <input defaultValue="status:failed tenant:northstar" aria-label="Search runs and spans" />
+            <input defaultValue={`status:${selectedRun.status} tenant:${selectedRun.tenant}`} aria-label="Search runs and spans" />
           </label>
           <div className="toolbar-meta">
             <span>Cmd K</span>
@@ -94,7 +112,11 @@ export default async function Page() {
                     <td>
                       <div className="run-primary">
                         <div>
-                          <strong>{run.name}</strong>
+                          <strong>
+                            <a href={`?runId=${encodeURIComponent(run.id)}`} aria-current={run.id === selectedRunId ? "page" : undefined}>
+                              {run.name}
+                            </a>
+                          </strong>
                           <span>{run.id}</span>
                         </div>
                       </div>
@@ -113,7 +135,7 @@ export default async function Page() {
           <section className="span-panel" aria-label="Span tree and waterfall">
             <div className="panel-heading">
               <h2>Span tree</h2>
-              <span>18.42s total</span>
+              <span>{totalDuration} total</span>
             </div>
             <div className="timeline-ruler" aria-hidden="true">
               <span>0s</span>
@@ -123,7 +145,7 @@ export default async function Page() {
             </div>
             <div className="span-table">
               {spans.map((span) => (
-                <div className={`span-row ${statusTone(span.status)}`} key={`${span.name}-${span.depth}`}>
+                <div className={`span-row ${statusTone(span.status)}`} key={span.id}>
                   <div className="span-name" style={{ paddingLeft: `${span.depth * 18 + 8}px` }}>
                     <StatusDot status={span.status} />
                     <div>
@@ -146,49 +168,50 @@ export default async function Page() {
           <aside className="detail-panel" aria-label="Selected span detail">
             <div className="panel-heading">
               <h2>Span detail</h2>
-              <span>tool_call</span>
+              <span>{selectedSpan.kind}</span>
             </div>
             <dl className="detail-list">
               <div>
                 <dt>Name</dt>
-                <dd>currency_convert</dd>
+                <dd>{selectedSpan.name}</dd>
               </div>
               <div>
                 <dt>Status</dt>
-                <dd className="danger">failed</dd>
+                <dd className={selectedSpan.status === "failed" ? "danger" : undefined}>{selectedSpan.status}</dd>
               </div>
               <div>
                 <dt>Runtime</dt>
-                <dd>mcp:finance</dd>
+                <dd>{selectedSpan.runtime}</dd>
               </div>
               <div>
                 <dt>Duration</dt>
-                <dd>3.84s</dd>
+                <dd>{selectedSpan.duration}</dd>
               </div>
               <div>
                 <dt>Cost</dt>
-                <dd>$0.01</dd>
+                <dd>{selectedSpan.cost}</dd>
               </div>
               <div>
-                <dt>Redaction</dt>
-                <dd>policy_v3 active</dd>
+                <dt>Run</dt>
+                <dd>{selectedRun.id}</dd>
               </div>
             </dl>
             <div className="events">
               <h3>Events</h3>
               <ol>
-                <li>
-                  <span>+2.101s</span>
-                  <strong>request.started</strong>
-                </li>
-                <li>
-                  <span>+4.903s</span>
-                  <strong>retry.scheduled</strong>
-                </li>
-                <li>
-                  <span>+5.941s</span>
-                  <strong>tool.error</strong>
-                </li>
+                {selectedSpan.events.length === 0 ? (
+                  <li>
+                    <span>+0.000s</span>
+                    <strong>no events</strong>
+                  </li>
+                ) : (
+                  selectedSpan.events.map((event) => (
+                    <li key={event.id}>
+                      <span>{event.offset}</span>
+                      <strong>{event.name}</strong>
+                    </li>
+                  ))
+                )}
               </ol>
             </div>
             <div className="suggestion">
