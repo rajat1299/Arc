@@ -788,13 +788,37 @@ function getSpanDepth(span: ApiSpan, spanById: Map<string, ApiSpan>, depthById: 
     return cached;
   }
 
-  if (span.parent_id === null) {
-    depthById.set(span.id, 0);
-    return 0;
+  let depth = 0;
+  let current = span;
+  const visited = new Set<string>();
+
+  while (current.parent_id !== null) {
+    if (visited.has(current.id)) {
+      depthById.set(span.id, 0);
+      return 0;
+    }
+
+    visited.add(current.id);
+
+    const parent = spanById.get(current.parent_id);
+
+    if (parent === undefined || visited.has(parent.id)) {
+      depthById.set(span.id, 0);
+      return 0;
+    }
+
+    const parentDepth = depthById.get(parent.id);
+
+    if (parentDepth !== undefined) {
+      depth += parentDepth + 1;
+      depthById.set(span.id, depth);
+      return depth;
+    }
+
+    depth += 1;
+    current = parent;
   }
 
-  const parent = spanById.get(span.parent_id);
-  const depth = parent === undefined ? 0 : getSpanDepth(parent, spanById, depthById) + 1;
   depthById.set(span.id, depth);
   return depth;
 }
