@@ -4,13 +4,14 @@ Engineering home for the Arc surface in the OpsCanvas -> Arc -> Atrium stack.
 
 This repository is currently a foundation scaffold for shared OpsCanvas/Arc
 tooling. It provides the monorepo layout, deterministic Python commands, a local
-in-memory ingest/query API, and a minimal web shell with API fallback behavior.
+in-memory ingest/query API with optional ClickHouse persistence, and a minimal web
+shell with API fallback behavior.
 
 ## Layout
 
 - `packages/opscanvas-core/`: shared Python contracts for canonical runs, spans, events, and schema versions.
 - `packages/opscanvas-agents/`: OpenAI Agents SDK tracing processor, exporter, and ingest client.
-- `services/api/`: FastAPI service with local in-memory ingest and run query routes.
+- `services/api/`: FastAPI service with memory and local ClickHouse ingest/query stores.
 - `web/`: Next.js shell that reads API run summaries when configured and falls back to static data.
 - `infra/`: placeholder for future local development infrastructure.
 
@@ -66,6 +67,48 @@ uv run python scripts/smoke_ingest.py --run-id run_ui_fixture
 
 Use `--api-url http://127.0.0.1:8001` when the API is on a different port.
 On success, the script prints the web URL to open with `?runId=<id>`.
+
+## ClickHouse API Mode
+
+Memory mode is the default and does not require Docker. To run the API with the
+local ClickHouse store, start ClickHouse first:
+
+```sh
+docker compose -f infra/docker-compose.dev.yml up -d clickhouse
+```
+
+Then start the API with the ClickHouse backend:
+
+```sh
+OPSCANVAS_API_STORE_BACKEND=clickhouse \
+OPSCANVAS_API_CLICKHOUSE_HOST=127.0.0.1 \
+OPSCANVAS_API_CLICKHOUSE_PORT=8123 \
+OPSCANVAS_API_CLICKHOUSE_USERNAME=opscanvas \
+OPSCANVAS_API_CLICKHOUSE_PASSWORD=opscanvas_dev_password \
+OPSCANVAS_API_CLICKHOUSE_DATABASE=opscanvas \
+OPSCANVAS_API_CLICKHOUSE_SECURE=false \
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
+```
+
+The default smoke command still works and does not require changing flags:
+
+```sh
+make smoke-ingest
+```
+
+Existing ClickHouse dev volumes created before the `runs.environment` column was
+added will not be updated by `CREATE TABLE IF NOT EXISTS`. Recreate dev volumes:
+
+```sh
+docker compose -f infra/docker-compose.dev.yml down -v
+docker compose -f infra/docker-compose.dev.yml up -d clickhouse
+```
+
+or run the migration manually:
+
+```sh
+docker compose -f infra/docker-compose.dev.yml exec clickhouse clickhouse-client --user opscanvas --password opscanvas_dev_password --database opscanvas --query "ALTER TABLE runs ADD COLUMN IF NOT EXISTS environment Nullable(String) AFTER environment_id"
+```
 
 Start the web shell separately:
 

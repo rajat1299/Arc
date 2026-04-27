@@ -15,10 +15,11 @@ Implemented routes:
 - `GET /v1/runs/{run_id}` returns the full canonical `Run`.
 - `GET /v1/runs/{run_id}/spans` returns the canonical spans for a run.
 
-The run store is process-local memory only. It does not write to a database, queue,
-redaction pipeline, auth layer, or pricing engine. Submitting a duplicate run ID
-replaces the prior in-memory run deliberately so local/dev ingestion can be retried
-idempotently.
+The run store defaults to process-local memory. Set
+`OPSCANVAS_API_STORE_BACKEND=clickhouse` to use the local ClickHouse adapter instead.
+The API does not yet write to a queue, redaction pipeline, auth layer, or pricing
+engine. Submitting a duplicate run ID replaces the prior run deliberately so
+local/dev ingestion can be retried idempotently.
 
 ## Local Smoke
 
@@ -44,4 +45,45 @@ or run ID with:
 
 ```sh
 uv run python scripts/smoke_ingest.py --api-url http://127.0.0.1:8001 --run-id run_ui_fixture
+```
+
+## ClickHouse Mode
+
+Start the local ClickHouse service from the repository root:
+
+```sh
+docker compose -f infra/docker-compose.dev.yml up -d clickhouse
+```
+
+Then start the API with the ClickHouse backend selected:
+
+```sh
+OPSCANVAS_API_STORE_BACKEND=clickhouse \
+OPSCANVAS_API_CLICKHOUSE_HOST=127.0.0.1 \
+OPSCANVAS_API_CLICKHOUSE_PORT=8123 \
+OPSCANVAS_API_CLICKHOUSE_USERNAME=opscanvas \
+OPSCANVAS_API_CLICKHOUSE_PASSWORD=opscanvas_dev_password \
+OPSCANVAS_API_CLICKHOUSE_DATABASE=opscanvas \
+OPSCANVAS_API_CLICKHOUSE_SECURE=false \
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
+```
+
+The default smoke remains unchanged and can be run against either backend:
+
+```sh
+make smoke-ingest
+```
+
+If your local ClickHouse volume was created before the `runs.environment` column was
+added, either recreate the dev volume:
+
+```sh
+docker compose -f infra/docker-compose.dev.yml down -v
+docker compose -f infra/docker-compose.dev.yml up -d clickhouse
+```
+
+or patch the existing table:
+
+```sh
+docker compose -f infra/docker-compose.dev.yml exec clickhouse clickhouse-client --user opscanvas --password opscanvas_dev_password --database opscanvas --query "ALTER TABLE runs ADD COLUMN IF NOT EXISTS environment Nullable(String) AFTER environment_id"
 ```

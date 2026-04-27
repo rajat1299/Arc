@@ -1,7 +1,64 @@
+import sys
+from types import SimpleNamespace
+
+import pytest
 from factories import canonical_run_payload
 from fastapi.testclient import TestClient
 from opscanvas_api.app import create_app
+from opscanvas_api.store import ClickHouseRunStore, InMemoryRunStore
 from opscanvas_core.schema_versions import CURRENT_SCHEMA_VERSION
+
+
+@pytest.fixture(autouse=True)
+def use_memory_store_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("OPSCANVAS_API_STORE_BACKEND", raising=False)
+
+
+def test_create_app_uses_memory_store_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("OPSCANVAS_API_STORE_BACKEND", raising=False)
+
+    app = create_app()
+
+    assert isinstance(app.state.run_store, InMemoryRunStore)
+
+
+def test_create_app_uses_clickhouse_store_when_configured(monkeypatch) -> None:
+    captured_kwargs = {}
+    fake_client = object()
+
+    def get_client(**kwargs):
+        captured_kwargs.update(kwargs)
+        return fake_client
+
+    monkeypatch.setenv("OPSCANVAS_API_STORE_BACKEND", "clickhouse")
+    monkeypatch.setenv("OPSCANVAS_API_CLICKHOUSE_HOST", "clickhouse.local")
+    monkeypatch.setenv("OPSCANVAS_API_CLICKHOUSE_PORT", "9440")
+    monkeypatch.setenv("OPSCANVAS_API_CLICKHOUSE_USERNAME", "api_user")
+    monkeypatch.setenv("OPSCANVAS_API_CLICKHOUSE_PASSWORD", "api_password")
+    monkeypatch.setenv("OPSCANVAS_API_CLICKHOUSE_DATABASE", "api_db")
+    monkeypatch.setenv("OPSCANVAS_API_CLICKHOUSE_SECURE", "true")
+    monkeypatch.setitem(
+        sys.modules,
+        "clickhouse_connect",
+        SimpleNamespace(get_client=get_client),
+    )
+
+    app = create_app()
+
+    assert isinstance(app.state.run_store, ClickHouseRunStore)
+    assert captured_kwargs == {}
+
+    resolved_client = app.state.run_store._client._resolve()
+
+    assert resolved_client is fake_client
+    assert captured_kwargs == {
+        "host": "clickhouse.local",
+        "port": 9440,
+        "username": "api_user",
+        "password": "api_password",
+        "database": "api_db",
+        "secure": True,
+    }
 
 
 def test_posted_run_is_queryable_by_id_and_spans() -> None:

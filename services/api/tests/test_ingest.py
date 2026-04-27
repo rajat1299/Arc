@@ -1,7 +1,13 @@
+import pytest
 from factories import canonical_run_payload
 from fastapi.testclient import TestClient
 from opscanvas_api.app import create_app
 from opscanvas_core.schema_versions import CURRENT_SCHEMA_VERSION
+
+
+@pytest.fixture(autouse=True)
+def use_memory_store_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("OPSCANVAS_API_STORE_BACKEND", raising=False)
 
 
 def test_ingest_run_accepts_canonical_payload() -> None:
