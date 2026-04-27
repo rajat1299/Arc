@@ -56,9 +56,16 @@ Then post and query a canonical sample run:
 make smoke-ingest
 ```
 
-The smoke script defaults to `http://127.0.0.1:8000`. Use
-`uv run python scripts/smoke_ingest.py --api-url http://127.0.0.1:8001` when the
-API is on a different port.
+The smoke script posts a richer run-detail fixture with agent, model, tool, and
+retry spans, then checks list, detail, spans, and metrics routes. It defaults to
+`http://127.0.0.1:8000`. Use a deterministic run ID when testing the web shell:
+
+```sh
+uv run python scripts/smoke_ingest.py --run-id run_ui_fixture
+```
+
+Use `--api-url http://127.0.0.1:8001` when the API is on a different port.
+On success, the script prints the web URL to open with `?runId=<id>`.
 
 Start the web shell separately:
 

@@ -34,8 +34,14 @@ In another terminal, post a canonical sample run and query it back:
 make smoke-ingest
 ```
 
-The smoke script targets `http://127.0.0.1:8000` by default. Override it with:
+The smoke fixture includes a root agent span, model calls, a tool call, and a
+suboptimal retry span with usage, cost, structured input/output, attributes, and
+events. It checks `/v1/runs`, `/v1/runs/{run_id}`, `/v1/runs/{run_id}/spans`, and
+`/v1/runs/metrics`.
+
+The smoke script targets `http://127.0.0.1:8000` by default. Override the API URL
+or run ID with:
 
 ```sh
-uv run python scripts/smoke_ingest.py --api-url http://127.0.0.1:8001
+uv run python scripts/smoke_ingest.py --api-url http://127.0.0.1:8001 --run-id run_ui_fixture
 ```

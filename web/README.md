@@ -26,8 +26,11 @@ uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
 In another terminal, seed it with a sample run:
 
 ```sh
-make smoke-ingest
+uv run python scripts/smoke_ingest.py --run-id run_ui_fixture
 ```
+
+The script prints a URL such as `http://localhost:3000/?runId=run_ui_fixture`
+after the API checks pass.
 
 Then start the web shell with the API base URL:
 
