@@ -41,8 +41,9 @@ class OpsCanvasClient:
         if response.is_success:
             return
 
+        reason = response.reason_phrase or "unexpected response"
         raise OpsCanvasClientError(
-            f"OpsCanvas ingest failed with HTTP {response.status_code}: {response.text}"
+            f"OpsCanvas ingest failed with HTTP {response.status_code}: {reason}"
         )
 
     def _headers(self) -> dict[str, str]:

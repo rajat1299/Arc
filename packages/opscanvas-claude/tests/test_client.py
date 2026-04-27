@@ -83,16 +83,26 @@ def test_client_raises_clear_error_for_missing_endpoint() -> None:
         OpsCanvasClient(config=OpsCanvasConfig(endpoint=None))
 
 
-def test_client_raises_clear_error_for_non_success_response() -> None:
+def test_client_raises_sanitized_error_for_non_success_response() -> None:
+    response_body = '{"error":"rejected","secret":"sk_live_secret","input":"private prompt"}'
     client = OpsCanvasClient(
         endpoint="https://api.example.test",
         http_client=httpx.Client(
-            transport=httpx.MockTransport(lambda request: httpx.Response(500, text="boom"))
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(500, text=response_body)
+            )
         ),
     )
 
-    with pytest.raises(OpsCanvasClientError, match="500.*boom"):
+    with pytest.raises(OpsCanvasClientError) as exc_info:
         client.ingest_run(_run(RunStatus.failed))
+
+    message = str(exc_info.value)
+    assert "500" in message
+    assert "Internal Server Error" in message
+    assert "private prompt" not in message
+    assert "sk_live_secret" not in message
+    assert response_body not in message
 
 
 class RecordingClient:
