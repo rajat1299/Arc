@@ -71,7 +71,7 @@ class ClaudeHookRecorder:
         elif event_name == "PostToolUseFailure":
             self._record_post_tool_use_failure(hook_input, tool_use_id)
         elif event_name == "PermissionRequest":
-            self._record_permission_request(hook_input)
+            self._record_permission_request(hook_input, tool_use_id)
         elif event_name == "SubagentStart":
             self._record_subagent_start(hook_input)
         elif event_name == "SubagentStop":
@@ -163,9 +163,9 @@ class ClaudeHookRecorder:
         )
         self.recorder._mark_failed()
 
-    def _record_permission_request(self, hook_input: object) -> None:
-        tool_use_id = _string(_get(hook_input, "tool_use_id"))
-        span = self._tool_spans.get(tool_use_id) if tool_use_id else None
+    def _record_permission_request(self, hook_input: object, tool_use_id: str | None) -> None:
+        resolved_tool_use_id = _string(tool_use_id) or _string(_get(hook_input, "tool_use_id"))
+        span = self._tool_spans.get(resolved_tool_use_id) if resolved_tool_use_id else None
         self.recorder._add_event(
             span or self.recorder._root_span,
             _EVENT_NAMES["PermissionRequest"],
@@ -296,31 +296,31 @@ def _hook_attributes(hook_input: object) -> dict[str, JsonValue]:
     for name in _allowed_fields(event_name):
         value = _get(hook_input, name)
         if value is not None:
-            attributes[name] = _json_value(_summarize_prompt(value) if name == "prompt" else value)
+            attributes[name] = _json_value(value)
+    if event_name == "UserPromptSubmit":
+        prompt = _get(hook_input, "prompt")
+        if isinstance(prompt, str):
+            attributes["prompt_length"] = len(prompt)
+    elif event_name == "PreCompact":
+        attributes["has_custom_instructions"] = _get(hook_input, "custom_instructions") is not None
     return attributes
 
 
 def _allowed_fields(event_name: str | None) -> tuple[str, ...]:
     common = ("hook_event_name", "session_id", "permission_mode", "agent_id", "agent_type")
     specific = {
-        "UserPromptSubmit": ("prompt",),
+        "UserPromptSubmit": (),
         "PreToolUse": ("tool_use_id", "tool_name", "tool_input"),
         "PostToolUse": ("tool_use_id", "tool_name", "tool_input", "tool_response"),
         "PostToolUseFailure": ("tool_use_id", "tool_name", "tool_input", "error", "is_interrupt"),
         "PermissionRequest": ("tool_name", "tool_input", "permission_suggestions"),
         "SubagentStart": (),
-        "SubagentStop": ("stop_hook_active", "agent_transcript_path"),
-        "Notification": ("message", "title", "notification_type"),
-        "PreCompact": ("trigger", "custom_instructions"),
+        "SubagentStop": ("stop_hook_active",),
+        "Notification": ("notification_type",),
+        "PreCompact": ("trigger",),
         "Stop": ("stop_hook_active",),
     }
     return common + specific.get(event_name or "", ())
-
-
-def _summarize_prompt(value: object, *, limit: int = 500) -> object:
-    if not isinstance(value, str) or len(value) <= limit:
-        return value
-    return f"{value[: limit - 3]}..."
 
 
 def _get(source: object, name: str, default: object = None) -> object:

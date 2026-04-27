@@ -41,6 +41,19 @@ def run_hook(hooks: object, event_name: str, payload: dict[str, Any]) -> dict[st
     return asyncio.run(callback(payload, payload.get("tool_use_id"), {"signal": None}))
 
 
+def run_hook_with_tool_use_id(
+    hooks: object,
+    event_name: str,
+    payload: dict[str, Any],
+    tool_use_id: str | None,
+) -> dict[str, Any]:
+    hook_dict = hooks
+    assert isinstance(hook_dict, dict)
+    matcher = hook_dict[event_name][-1]
+    callback = matcher.hooks[0]
+    return asyncio.run(callback(payload, tool_use_id, {"signal": None}))
+
+
 def test_build_opscanvas_hooks_merges_after_customer_hooks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -288,7 +301,109 @@ def test_root_only_hooks_record_events(monkeypatch: pytest.MonkeyPatch) -> None:
         "claude.pre_compact",
         "claude.stop",
     ]
-    assert run.spans[0].events[0].attributes["prompt"] == "hello"
+    assert run.spans[0].events[0].attributes["prompt_length"] == 5
+    assert "prompt" not in run.spans[0].events[0].attributes
+
+
+def test_permission_request_uses_callback_tool_use_id_for_active_tool_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_fake_claude_sdk(monkeypatch)
+    recorder = ClaudeRunRecorder(run_id="run_permission_tool", started_at=STARTED_AT)
+    hooks = build_opscanvas_hooks(recorder)
+
+    run_hook(
+        hooks,
+        "PreToolUse",
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_use_id": "tool_123",
+            "tool_name": "Bash",
+            "tool_input": {"command": "pwd"},
+        },
+    )
+    run_hook_with_tool_use_id(
+        hooks,
+        "PermissionRequest",
+        {
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "tool_input": {"command": "pwd"},
+            "permission_suggestions": [{"decision": "allow"}],
+        },
+        "tool_123",
+    )
+
+    run = recorder.finish(ENDED_AT)
+    root_span = run.spans[0]
+    tool_span = next(span for span in run.spans if span.kind is SpanKind.tool_call)
+    assert "claude.permission_request" not in [event.name for event in root_span.events]
+    assert [event.name for event in tool_span.events] == [
+        "claude.pre_tool_use",
+        "claude.permission_request",
+    ]
+    assert tool_span.events[1].attributes["tool_name"] == "Bash"
+    assert tool_span.events[1].attributes["tool_input"] == {"command": "pwd"}
+
+
+def test_secret_bearing_hook_fields_are_not_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_fake_claude_sdk(monkeypatch)
+    recorder = ClaudeRunRecorder(run_id="run_secrets", started_at=STARTED_AT)
+    hooks = build_opscanvas_hooks(recorder)
+
+    run_hook(
+        hooks,
+        "UserPromptSubmit",
+        {"hook_event_name": "UserPromptSubmit", "prompt": "secret prompt text"},
+    )
+    run_hook(
+        hooks,
+        "Notification",
+        {
+            "hook_event_name": "Notification",
+            "message": "secret notification body",
+            "title": "secret notification title",
+            "notification_type": "info",
+        },
+    )
+    run_hook(
+        hooks,
+        "PreCompact",
+        {
+            "hook_event_name": "PreCompact",
+            "trigger": "manual",
+            "custom_instructions": "secret compact instructions",
+        },
+    )
+    run_hook(
+        hooks,
+        "SubagentStop",
+        {
+            "hook_event_name": "SubagentStop",
+            "agent_id": "missing",
+            "agent_type": "general",
+            "agent_transcript_path": "/tmp/secret-transcript.jsonl",
+        },
+    )
+
+    run = recorder.finish(ENDED_AT)
+    event_attributes = [event.attributes for event in run.spans[0].events]
+    assert event_attributes[0]["prompt_length"] == len("secret prompt text")
+    assert "prompt" not in event_attributes[0]
+    assert event_attributes[1]["notification_type"] == "info"
+    assert "message" not in event_attributes[1]
+    assert "title" not in event_attributes[1]
+    assert event_attributes[2]["trigger"] == "manual"
+    assert event_attributes[2]["has_custom_instructions"] is True
+    assert "custom_instructions" not in event_attributes[2]
+    assert "agent_transcript_path" not in event_attributes[3]
+    assert "secret prompt text" not in str(event_attributes)
+    assert "secret notification body" not in str(event_attributes)
+    assert "secret notification title" not in str(event_attributes)
+    assert "secret compact instructions" not in str(event_attributes)
+    assert "secret-transcript" not in str(event_attributes)
 
 
 def test_missing_sdk_raises_only_when_helper_is_called(
