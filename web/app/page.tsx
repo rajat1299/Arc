@@ -1,232 +1,76 @@
-import { type DisplayStatus, getOpsCanvasData } from "./data";
+import { getOpsCanvasData } from "./data";
+import { RunTable } from "./RunTable";
+import { SpanDetail } from "./SpanDetail";
+import { SpanWaterfall } from "./SpanWaterfall";
+import { SummaryStrip } from "./SummaryStrip";
+import { Topbar } from "./Topbar";
 
 export const dynamic = "force-dynamic";
 
-function statusTone(status: DisplayStatus) {
-  if (status === "suboptimal" || status === "interrupted") {
-    return "warning";
-  }
-
-  return status;
-}
-
-function StatusDot({ status }: { status: DisplayStatus }) {
-  return <span className={`status-dot ${statusTone(status)}`} aria-label={status} />;
-}
+type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
-  searchParams?: Promise<{
-    runId?: string | string[];
-  }>;
+  searchParams?: Promise<SearchParams>;
 };
 
-function readRunId(params: { runId?: string | string[] } | undefined): string | undefined {
-  const runId = params?.runId;
-
-  if (Array.isArray(runId)) {
-    return runId[0];
+function readParam(
+  params: SearchParams | undefined,
+  key: string,
+): string | undefined {
+  const value = params?.[key];
+  if (Array.isArray(value)) {
+    return value[0];
   }
-
-  return runId;
+  return value;
 }
 
 export default async function Page({ searchParams }: PageProps) {
-  const requestedRunId = readRunId(await searchParams);
-  const { runs, spans, summary, selectedRunId, selectedRun, selectedSpan, totalDuration } =
-    await getOpsCanvasData(requestedRunId);
+  const params = (await searchParams) ?? {};
+  const requestedRunId = readParam(params, "runId");
+  const requestedSpanId = readParam(params, "spanId");
+
+  const data = await getOpsCanvasData(requestedRunId, requestedSpanId);
 
   return (
-    <main className="ops-shell">
-      <aside className="sidebar" aria-label="Workspace navigation">
-        <div className="brand">
-          <span className="brand-mark">A</span>
-          <span>Arc</span>
-        </div>
-        <nav className="nav-list">
-          {["Runs", "Traces", "Evals", "Cost", "Settings"].map((item) => (
-            <a className={item === "Traces" ? "active" : ""} href="#" key={item}>
-              {item}
-            </a>
-          ))}
-        </nav>
-        <div className="environment">
-          <span>Project</span>
-          <strong>Production agents</strong>
-          <span>prod / us-central</span>
-        </div>
-      </aside>
-
-      <section className="workspace" aria-label="Trace operations workspace">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Trace detail</p>
-            <h1>{selectedRun.name}</h1>
+    <>
+      <main className="shell" aria-label="OpsCanvas">
+        <Topbar apiState={data.apiState} />
+        {data.apiState.mode === "error" && data.apiState.errorMessage !== null ? (
+          <div className="error-banner" role="status" aria-live="polite">
+            <span className="chip-dot" aria-hidden="true" />
+            {data.apiState.errorMessage} Showing fallback data.
           </div>
-          <label className="search">
-            <span>Search</span>
-            <input defaultValue={`status:${selectedRun.status} tenant:${selectedRun.tenant}`} aria-label="Search runs and spans" />
-          </label>
-          <div className="toolbar-meta">
-            <span>Cmd K</span>
-            <button>Replay</button>
-          </div>
-        </header>
-
-        <div className="summary-strip" aria-label="Cost and evaluation summary">
-          {summary.map((item) => (
-            <div className="metric" key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <em>{item.delta}</em>
+        ) : null}
+        <SummaryStrip metrics={data.metrics} />
+        <div className="content">
+          <section className="pane" aria-label="Recent runs">
+            <div className="pane-header">
+              <span className="pane-title">Runs</span>
+              <span className="pane-meta">
+                {data.runs.length} {data.runs.length === 1 ? "run" : "runs"}
+              </span>
             </div>
-          ))}
-        </div>
-
-        <div className="content-grid">
-          <section className="run-list" aria-label="Run search results">
-            <div className="panel-heading">
-              <h2>Runs</h2>
-              <span>Failed view</span>
-            </div>
-            <table className="run-table" aria-label="Recent runs">
-              <thead>
-                <tr>
-                  <th scope="col">Status</th>
-                  <th scope="col">Run</th>
-                  <th scope="col">Tenant</th>
-                  <th scope="col">Runtime</th>
-                  <th scope="col">Duration</th>
-                  <th scope="col">Cost</th>
-                  <th scope="col">Started</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((run) => (
-                  <tr key={run.id}>
-                    <td>
-                      <span className="status-label">
-                        <StatusDot status={run.status} />
-                        {run.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="run-primary">
-                        <div>
-                          <strong>
-                            <a href={`?runId=${encodeURIComponent(run.id)}`} aria-current={run.id === selectedRunId ? "page" : undefined}>
-                              {run.name}
-                            </a>
-                          </strong>
-                          <span>{run.id}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td>{run.tenant}</td>
-                    <td>{run.runtime}</td>
-                    <td>{run.duration}</td>
-                    <td>{run.cost}</td>
-                    <td>{run.started}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-
-          <section className="span-panel" aria-label="Span tree and waterfall">
-            <div className="panel-heading">
-              <h2>Span tree</h2>
-              <span>{totalDuration} total</span>
-            </div>
-            <div className="timeline-ruler" aria-hidden="true">
-              <span>0s</span>
-              <span>6s</span>
-              <span>12s</span>
-              <span>18s</span>
-            </div>
-            <div className="span-table">
-              {spans.map((span) => (
-                <div className={`span-row ${statusTone(span.status)}`} key={span.id}>
-                  <div className="span-name" style={{ paddingLeft: `${span.depth * 18 + 8}px` }}>
-                    <StatusDot status={span.status} />
-                    <div>
-                      <strong>{span.name}</strong>
-                      <span>
-                        {span.kind} / {span.runtime}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="duration">{span.duration}</span>
-                  <span className="cost">{span.cost}</span>
-                  <div className="waterfall" aria-hidden="true">
-                    <span style={{ left: `${span.offset}%`, width: `${span.width}%` }} />
-                  </div>
-                </div>
-              ))}
+            <div className="pane-body">
+              <RunTable runs={data.runs} selectedRunId={data.selectedRunId} />
             </div>
           </section>
-
-          <aside className="detail-panel" aria-label="Selected span detail">
-            <div className="panel-heading">
-              <h2>Span detail</h2>
-              <span>{selectedSpan.kind}</span>
-            </div>
-            <dl className="detail-list">
-              <div>
-                <dt>Name</dt>
-                <dd>{selectedSpan.name}</dd>
-              </div>
-              <div>
-                <dt>Status</dt>
-                <dd className={selectedSpan.status === "failed" ? "danger" : undefined}>{selectedSpan.status}</dd>
-              </div>
-              <div>
-                <dt>Runtime</dt>
-                <dd>{selectedSpan.runtime}</dd>
-              </div>
-              <div>
-                <dt>Duration</dt>
-                <dd>{selectedSpan.duration}</dd>
-              </div>
-              <div>
-                <dt>Cost</dt>
-                <dd>{selectedSpan.cost}</dd>
-              </div>
-              <div>
-                <dt>Run</dt>
-                <dd>{selectedRun.id}</dd>
-              </div>
-            </dl>
-            <div className="events">
-              <h3>Events</h3>
-              <ol>
-                {selectedSpan.events.length === 0 ? (
-                  <li>
-                    <span>+0.000s</span>
-                    <strong>no events</strong>
-                  </li>
-                ) : (
-                  selectedSpan.events.map((event) => (
-                    <li key={event.id}>
-                      <span>{event.offset}</span>
-                      <strong>{event.name}</strong>
-                    </li>
-                  ))
-                )}
-              </ol>
-            </div>
-            <div className="suggestion">
-              <p className="eyebrow">Improvement queue</p>
-              <h3>Retry fixed-rate fallback on EUR conversion failures.</h3>
-              <div className="evidence">
-                <span>Eval delta</span>
-                <strong>+6.2%</strong>
-                <span>Cost delta</span>
-                <strong>+$0.02/run</strong>
-              </div>
-            </div>
-          </aside>
+          <SpanWaterfall
+            runs={data.runs}
+            selectedRun={data.selectedRun}
+            spans={data.spans}
+            selectedSpan={data.selectedSpan}
+            totalRunDurationMs={data.totalRunDurationMs}
+          />
+          <SpanDetail selectedRun={data.selectedRun} selectedSpan={data.selectedSpan} />
         </div>
-      </section>
-    </main>
+      </main>
+      <div className="narrow-message" role="status">
+        <p>
+          <strong>OpsCanvas is best viewed on a desktop.</strong>
+          <br />
+          Trace tables and span waterfalls need at least 1024px of horizontal space.
+        </p>
+      </div>
+    </>
   );
 }
