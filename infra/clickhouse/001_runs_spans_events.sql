@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS runs
     org_id Nullable(UUID) COMMENT 'Metadata hierarchy id from Postgres. Nullable while early local ingest can run without auth.',
     project_id Nullable(UUID) COMMENT 'Metadata hierarchy id from Postgres. Mirrors Run.project_id when that value is UUID-backed.',
     environment_id Nullable(UUID) COMMENT 'Environment id from Postgres for production/staging/dev rollups.',
+    environment Nullable(String) COMMENT 'Canonical Run.environment string for local/dev filters and round-trips. Kept separate from environment_id, which is the future Postgres hierarchy id.',
     run_id String COMMENT 'Canonical Run.id. Kept as String because runtime translators may emit non-UUID ids.',
     schema_version LowCardinality(String) COMMENT 'Canonical persisted Run schema version, for example 0.1.',
     runtime LowCardinality(String) COMMENT 'Canonical Run.runtime such as openai-agents-python, claude-agent-sdk, langgraph, or crewai.',

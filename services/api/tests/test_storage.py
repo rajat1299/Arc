@@ -76,6 +76,7 @@ def test_rich_run_maps_to_clickhouse_rows() -> None:
         "org_id": None,
         "project_id": "123e4567-e89b-12d3-a456-426614174000",
         "environment_id": None,
+        "environment": "local-dev",
         "run_id": "run_rich",
         "schema_version": CURRENT_SCHEMA_VERSION,
         "runtime": "openai-agents-python",
@@ -156,6 +157,7 @@ def test_running_run_and_open_span_have_null_durations_and_missing_usage() -> No
     assert run_row["duration_ms"] is None
     assert run_row["project_id"] is None
     assert run_row["environment_id"] is None
+    assert run_row["environment"] == "environment_not_uuid"
     assert run_row["input_tokens"] is None
     assert run_row["total_tokens"] is None
     assert span_row["ended_at"] is None

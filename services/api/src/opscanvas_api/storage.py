@@ -21,6 +21,7 @@ def run_to_clickhouse_row(run: Run) -> ClickHouseRow:
     usage = _usage_columns(run.usage)
     return {
         **ids,
+        "environment": run.environment,
         "run_id": run.id,
         "schema_version": run.schema_version,
         "runtime": run.runtime,

@@ -20,6 +20,7 @@ RUN_COLUMNS = [
     "org_id",
     "project_id",
     "environment_id",
+    "environment",
     "run_id",
     "schema_version",
     "runtime",
@@ -206,7 +207,7 @@ class ClickHouseRunStore:
             where_clauses.append("tenant_id = {tenant_id:String}")
             parameters["tenant_id"] = tenant_id
         if environment is not None:
-            where_clauses.append("environment_id = {environment:String}")
+            where_clauses.append("environment = {environment:String}")
             parameters["environment"] = environment
 
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
@@ -291,6 +292,7 @@ def _read_run_columns() -> list[str]:
         "org_id",
         "project_id",
         "environment_id",
+        "environment",
         "run_id",
         "schema_version",
         "runtime",
@@ -346,7 +348,7 @@ def _run_from_row(row: ClickHouseRow, spans: list[Span]) -> Run:
             "ended_at": row["ended_at"],
             "runtime": row["runtime"],
             "project_id": _optional_string(row.get("project_id")),
-            "environment": _optional_string(row.get("environment_id")),
+            "environment": _optional_string(row.get("environment") or row.get("environment_id")),
             "tenant_id": row["tenant_id"],
             "user_id": row["user_id"],
             "workflow_name": row["workflow_name"],

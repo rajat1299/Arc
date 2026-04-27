@@ -75,6 +75,7 @@ def test_upsert_replaces_existing_rows_and_inserts_expected_columns() -> None:
         "org_id",
         "project_id",
         "environment_id",
+        "environment",
         "run_id",
         "schema_version",
         "runtime",
@@ -98,6 +99,7 @@ def test_upsert_replaces_existing_rows_and_inserts_expected_columns() -> None:
         "runtime_attributes_json",
     ]
     assert run_rows[0][run_columns.index("run_id")] == "run_123"
+    assert run_rows[0][run_columns.index("environment")] == "test"
     assert run_rows[0][run_columns.index("metadata_json")] == (
         '{"org_id":"123e4567-e89b-12d3-a456-426614174111"}'
     )
@@ -180,6 +182,22 @@ def test_get_reconstructs_run_with_spans_events_json_usage_and_decimal_costs() -
     assert client.queries[0][1] == {"run_id": "run_123"}
 
 
+def test_get_round_trips_non_uuid_environment() -> None:
+    client = FakeClickHouseClient(
+        [
+            [{**_run_row(), "environment_id": None, "environment": "test"}],
+            [_span_row()],
+            [_event_row()],
+        ]
+    )
+    store = ClickHouseRunStore(client)
+
+    run = store.get("run_123")
+
+    assert run is not None
+    assert run.environment == "test"
+
+
 def test_get_returns_none_for_missing_run_without_extra_queries() -> None:
     client = FakeClickHouseClient([[]])
     store = ClickHouseRunStore(client)
@@ -209,7 +227,7 @@ def test_list_applies_filters_limit_and_newest_first_ordering() -> None:
         status=RunStatus.succeeded,
         runtime="pytest",
         tenant_id="tenant_123",
-        environment="123e4567-e89b-12d3-a456-426614174222",
+        environment="test",
         limit=2,
     )
 
@@ -219,14 +237,14 @@ def test_list_applies_filters_limit_and_newest_first_ordering() -> None:
     assert "status = {status:String}" in query
     assert "runtime = {runtime:String}" in query
     assert "tenant_id = {tenant_id:String}" in query
-    assert "environment_id = {environment:String}" in query
+    assert "environment = {environment:String}" in query
     assert "ORDER BY started_at DESC" in query
     assert "LIMIT {limit:UInt64}" in query
     assert parameters == {
         "status": "succeeded",
         "runtime": "pytest",
         "tenant_id": "tenant_123",
-        "environment": "123e4567-e89b-12d3-a456-426614174222",
+        "environment": "test",
         "limit": 2,
     }
 
@@ -240,7 +258,7 @@ def _canonical_run() -> Run:
         ended_at=datetime(2026, 1, 1, 0, 0, 3, tzinfo=UTC),
         runtime="pytest",
         project_id="123e4567-e89b-12d3-a456-426614174000",
-        environment="123e4567-e89b-12d3-a456-426614174222",
+        environment="test",
         tenant_id="tenant_123",
         user_id="user_123",
         workflow_name="workflow",
@@ -284,6 +302,7 @@ def _run_row() -> dict[str, Any]:
         "org_id": "123e4567-e89b-12d3-a456-426614174111",
         "project_id": "123e4567-e89b-12d3-a456-426614174000",
         "environment_id": "123e4567-e89b-12d3-a456-426614174222",
+        "environment": "test",
         "run_id": "run_123",
         "schema_version": CURRENT_SCHEMA_VERSION,
         "runtime": "pytest",
