@@ -774,11 +774,26 @@ function spanStatus(span: ApiSpan, runStatus: ApiRunStatus): DisplayStatus {
     return status;
   }
 
+  if (hasSuboptimalSignal(span)) {
+    return "suboptimal";
+  }
+
   if (span.events.some((event) => event.name.includes("error") || event.name.includes("failed"))) {
     return "failed";
   }
 
   return runStatus === "failed" && span.parent_id === null ? "failed" : "succeeded";
+}
+
+function hasSuboptimalSignal(span: ApiSpan): boolean {
+  const failure = span.attributes.failure;
+
+  return (
+    span.attributes["failure.severity"] === "suboptimal" ||
+    span.attributes.severity === "suboptimal" ||
+    (isRecord(failure) && failure.severity === "suboptimal") ||
+    span.events.some((event) => event.name === "quality.suboptimal_detected")
+  );
 }
 
 function getSpanDepth(span: ApiSpan, spanById: Map<string, ApiSpan>, depthById: Map<string, number>): number {
