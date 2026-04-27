@@ -1,12 +1,13 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, status
+from opscanvas_api.auth import require_api_key
 from opscanvas_api.routes.runs import get_run_store
 from opscanvas_api.store import RunStore
 from opscanvas_core.events import Run
 from pydantic import BaseModel, ConfigDict
 
-router = APIRouter(prefix="/v1/ingest", tags=["ingest"])
+router = APIRouter(prefix="/v1/ingest", tags=["ingest"], dependencies=[Depends(require_api_key)])
 
 
 class AcceptedRun(BaseModel):

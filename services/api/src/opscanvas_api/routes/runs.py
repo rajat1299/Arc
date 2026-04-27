@@ -4,12 +4,13 @@ from math import ceil
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from opscanvas_api.auth import require_api_key
 from opscanvas_api.store import RunStore
 from opscanvas_core.events import Run, RunStatus, Span, SpanKind
 from opscanvas_core.pricing import compute_cost
 from pydantic import BaseModel, ConfigDict
 
-router = APIRouter(prefix="/v1/runs", tags=["runs"])
+router = APIRouter(prefix="/v1/runs", tags=["runs"], dependencies=[Depends(require_api_key)])
 
 _OPENAI_AGENTS_RUNTIMES = frozenset({"openai-agents", "opscanvas-agents", "openai_agents"})
 _USD_QUANTUM = Decimal("0.0000000001")

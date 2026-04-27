@@ -12,6 +12,8 @@ from opscanvas_core.schema_versions import CURRENT_SCHEMA_VERSION
 @pytest.fixture(autouse=True)
 def use_memory_store_by_default(monkeypatch) -> None:
     monkeypatch.delenv("OPSCANVAS_API_STORE_BACKEND", raising=False)
+    monkeypatch.delenv("OPSCANVAS_API_AUTH_ENABLED", raising=False)
+    monkeypatch.delenv("OPSCANVAS_API_API_KEYS", raising=False)
 
 
 def test_create_app_uses_memory_store_by_default(monkeypatch) -> None:
