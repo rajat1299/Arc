@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +10,7 @@ class Settings(BaseSettings):
     service_name: str = "opscanvas-api"
     version: str = "0.1.0"
     auth_enabled: bool = False
-    api_keys: str = ""
+    api_keys: str = Field(default="", repr=False)
     store_backend: Literal["memory", "clickhouse"] = "memory"
     clickhouse_host: str = "127.0.0.1"
     clickhouse_port: int = 8123

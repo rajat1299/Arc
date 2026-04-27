@@ -39,6 +39,12 @@ def test_settings_reads_auth_environment(monkeypatch: pytest.MonkeyPatch) -> Non
     assert settings.api_keys == "alpha"
 
 
+def test_settings_repr_does_not_expose_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPSCANVAS_API_API_KEYS", "secret-api-key")
+
+    assert "secret-api-key" not in repr(Settings())
+
+
 def test_validate_api_key_accepts_only_configured_key() -> None:
     configured_keys = ("alpha", "beta")
 
