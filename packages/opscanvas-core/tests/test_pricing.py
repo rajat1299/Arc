@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+import pytest
 from opscanvas_core.events import Usage
 from opscanvas_core.pricing import (
     MODEL_PRICES,
@@ -46,6 +47,33 @@ def test_anthropic_cached_input_pricing_uses_catalog_rate() -> None:
     assert cost.cached_input_cost_usd == Decimal("0.0004500000")
     assert cost.output_cost_usd == Decimal("0.0045000000")
     assert cost.total_cost_usd == Decimal("0.0064500000")
+
+
+@pytest.mark.parametrize(
+    ("model", "canonical_model", "expected_total"),
+    [
+        ("claude-opus-4-7", "claude-opus-4.7", Decimal("0.0300000000")),
+        ("claude-sonnet-4-6", "claude-sonnet-4.6", Decimal("0.0180000000")),
+        ("claude-haiku-4-5-20251001", "claude-haiku-4.5", Decimal("0.0060000000")),
+    ],
+)
+def test_anthropic_api_ids_resolve_to_catalog_prices(
+    model: str,
+    canonical_model: str,
+    expected_total: Decimal,
+) -> None:
+    assert normalize_model("anthropic", model) == canonical_model
+    assert lookup_model_price("anthropic", model) is not None
+
+    cost = compute_cost(
+        Usage(input_tokens=1_000, output_tokens=1_000),
+        model=model,
+        provider="anthropic",
+    )
+
+    assert cost is not None
+    assert cost.model == canonical_model
+    assert cost.total_cost_usd == expected_total
 
 
 def test_gemini_25_pro_uses_short_context_tier_at_200k_input_tokens() -> None:
@@ -105,6 +133,21 @@ def test_missing_usage_or_no_billable_usage_returns_none() -> None:
         )
         is None
     )
+
+
+def test_cached_input_tokens_are_clamped_to_total_input_tokens() -> None:
+    cost = compute_cost(
+        Usage(input_tokens=100, cached_input_tokens=200, output_tokens=0),
+        model="gpt-5.4",
+        provider="openai",
+    )
+
+    assert cost is not None
+    assert cost.input_tokens == 0
+    assert cost.cached_input_tokens == 100
+    assert cost.input_cost_usd == Decimal("0.0000000000")
+    assert cost.cached_input_cost_usd == Decimal("0.0000250000")
+    assert cost.total_cost_usd == Decimal("0.0000250000")
 
 
 def test_rounding_is_deterministic_to_ten_decimal_places() -> None:

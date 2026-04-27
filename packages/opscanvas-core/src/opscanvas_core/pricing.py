@@ -211,8 +211,18 @@ _MODEL_ALIASES: Mapping[tuple[str, str], str] = MappingProxyType(
         ("anthropic", "claude 4 7 opus"): "claude-opus-4.7",
         ("anthropic", "claude 4.7 opus"): "claude-opus-4.7",
         ("anthropic", "claude-4-7-opus"): "claude-opus-4.7",
+        ("anthropic", "claude-opus-4-7"): "claude-opus-4.7",
         ("anthropic", "claude opus 4.7"): "claude-opus-4.7",
+        ("anthropic", "claude-opus-4-6"): "claude-opus-4.6",
+        ("anthropic", "claude-opus-4-5"): "claude-opus-4.5",
+        ("anthropic", "claude-opus-4-1"): "claude-opus-4.1",
+        ("anthropic", "claude-sonnet-4-6"): "claude-sonnet-4.6",
         ("anthropic", "claude sonnet 4.5"): "claude-sonnet-4.5",
+        ("anthropic", "claude-sonnet-4-5"): "claude-sonnet-4.5",
+        ("anthropic", "claude-sonnet-3-7"): "claude-sonnet-3.7",
+        ("anthropic", "claude-haiku-4-5"): "claude-haiku-4.5",
+        ("anthropic", "claude-haiku-4-5-20251001"): "claude-haiku-4.5",
+        ("anthropic", "claude-haiku-3-5"): "claude-haiku-3.5",
         ("google", "gemini 2.5 pro preview"): "gemini-2.5-pro",
         ("openai", "gpt 5.4 mini"): "gpt-5.4-mini",
     }
@@ -265,7 +275,7 @@ def compute_cost(usage: Usage | None, model: str, provider: str) -> CostBreakdow
         return None
 
     total_input_tokens = usage.input_tokens or 0
-    cached_input_tokens = usage.cached_input_tokens or 0
+    cached_input_tokens = min(usage.cached_input_tokens or 0, total_input_tokens)
     output_tokens = usage.output_tokens or 0
     if total_input_tokens <= 0 and output_tokens <= 0:
         return None
