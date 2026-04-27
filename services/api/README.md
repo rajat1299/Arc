@@ -74,6 +74,18 @@ The default smoke remains unchanged and can be run against either backend:
 make smoke-ingest
 ```
 
+To exercise the full local persistence path, leave Docker ClickHouse running and
+run the restart smoke from the repository root:
+
+```sh
+uv run python scripts/smoke_clickhouse_persistence.py
+```
+
+The persistence smoke starts the API in ClickHouse mode on `127.0.0.1:18080`,
+ingests the rich fixture, checks list/detail/spans/metrics, restarts the API
+process, and checks the same run again. Pass `--port 18081` or another free port
+if needed; the script refuses to attach to an already-running API.
+
 If your local ClickHouse volume was created before the `runs.environment` column was
 added, either recreate the dev volume:
 

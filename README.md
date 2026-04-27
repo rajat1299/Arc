@@ -96,6 +96,18 @@ The default smoke command still works and does not require changing flags:
 make smoke-ingest
 ```
 
+To prove data survives an API process restart, leave the Docker ClickHouse
+service running and run the ClickHouse persistence smoke. The script starts the
+API on an isolated port, ingests the rich fixture, queries list/detail/spans and
+metrics, restarts the API process, then queries the same run again:
+
+```sh
+uv run python scripts/smoke_clickhouse_persistence.py
+```
+
+Use `--port 18081` if the default smoke port is already occupied. The script
+fails rather than reusing an existing API process.
+
 Existing ClickHouse dev volumes created before the `runs.environment` column was
 added will not be updated by `CREATE TABLE IF NOT EXISTS`. Recreate dev volumes:
 
