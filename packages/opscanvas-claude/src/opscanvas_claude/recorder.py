@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 from opscanvas_core import (
     Run,
@@ -61,7 +62,11 @@ class ClaudeRunRecorder:
         """Record a duck-typed Claude SDK message object."""
         message_type = type(message).__name__
         if message_type == "UserMessage":
-            self._add_event(self._root_span, "claude.user_message", {"content": _content(message)})
+            self._add_event(
+                self._root_span,
+                "claude.user_message",
+                {"content": _json_summary(_get(message, "content", None))},
+            )
             return
         if message_type == "AssistantMessage":
             self._record_assistant_message(message)
@@ -132,7 +137,7 @@ class ClaudeRunRecorder:
         _set_if_present(attributes, "claude.session_id", _get(message, "session_id", None))
         _set_if_present(attributes, "claude.uuid", _get(message, "uuid", None))
         if error is not None:
-            attributes["claude.error"] = _json_value(error)
+            attributes["claude.error"] = _json_summary(error)
             self._mark_failed()
 
         span = Span(
@@ -171,11 +176,13 @@ class ClaudeRunRecorder:
             "duration_ms": "claude.duration_ms",
             "duration_api_ms": "claude.duration_api_ms",
             "total_cost_usd": "claude.total_cost_usd",
-            "errors": "claude.errors",
         }.items():
             _set_if_present(self._metadata, metadata_name, _get(message, source_name, None))
+        errors = _get(message, "errors", None)
+        if errors:
+            self._metadata["claude.errors"] = _error_summary(errors)
 
-        if _truthy(_get(message, "is_error", None)) or _get(message, "errors", None):
+        if _truthy(_get(message, "is_error", None)) or errors:
             self._mark_failed()
         elif _indicates_interrupted(_get(message, "stop_reason", None)):
             self._mark_interrupted()
@@ -226,12 +233,8 @@ def _set_if_present(target: dict[str, JsonValue], name: str, value: object) -> N
         target[name] = _json_value(value)
 
 
-def _content(message: object) -> JsonValue:
-    return _json_value(_get(message, "content", None))
-
-
 def _content_blocks(value: object) -> JsonValue:
-    return _json_value(list(_iter_blocks(value)))
+    return _json_summary(list(_iter_blocks(value)))
 
 
 def _iter_blocks(value: object) -> list[object]:
@@ -310,8 +313,31 @@ def _message_attributes(message: object) -> dict[str, JsonValue]:
     for name in fields_to_record:
         value = _get(message, name, None)
         if value is not None:
-            attributes[name] = _json_value(value)
+            attributes[name] = _field_value(name, value)
     return attributes
+
+
+_CONTENT_FIELDS = {
+    "content",
+    "data",
+    "description",
+    "error",
+    "errors",
+    "input",
+    "message",
+    "metadata",
+    "signature",
+    "text",
+    "thinking",
+}
+
+
+def _field_value(name: str, value: object) -> JsonValue:
+    if name == "errors":
+        return _error_summary(value)
+    if name in _CONTENT_FIELDS:
+        return _json_summary(value)
+    return _json_value(value)
 
 
 def _unknown_message_attributes(message: object) -> dict[str, JsonValue]:
@@ -433,23 +459,47 @@ def _safe_json_value(value: object, seen: set[int]) -> JsonValue:
         finally:
             seen.remove(value_id)
     if is_dataclass(value) and not isinstance(value, type):
-        seen.add(value_id)
-        try:
-            return {
-                field.name: _safe_json_value(getattr(value, field.name), seen)
-                for field in fields(value)
-            }
-        finally:
-            seen.remove(value_id)
+        return _type_summary(value)
 
-    return _bounded_repr(value)
+    return _type_summary(value)
 
 
-def _bounded_repr(value: object, *, limit: int = 200) -> str:
-    try:
-        text = repr(value)
-    except Exception:
-        text = f"<unrepresentable {type(value).__name__}>"
-    if len(text) <= limit:
-        return text
-    return f"{text[: limit - 3]}..."
+def _json_summary(value: object) -> JsonValue:
+    if isinstance(value, str):
+        return {"type": "str", "length": len(value)}
+    if isinstance(value, bool):
+        return {"type": "bool"}
+    if isinstance(value, int | float):
+        return {"type": type(value).__name__}
+    if value is None:
+        return {"type": "NoneType"}
+    if isinstance(value, list | tuple):
+        summary: dict[str, JsonValue] = {
+            "type": "list",
+            "item_count": len(value),
+        }
+        block_types = [type(item).__name__ for item in value]
+        if block_types:
+            summary["block_types"] = cast(JsonValue, block_types)
+        return summary
+    if isinstance(value, dict):
+        return {"type": "dict", "key_count": len(value)}
+    if is_dataclass(value) and not isinstance(value, type):
+        return {"type": type(value).__name__, "field_count": len(fields(value))}
+    return _type_summary(value)
+
+
+def _error_summary(value: object) -> JsonValue:
+    summary = _json_summary(value)
+    if isinstance(value, list | tuple):
+        assert isinstance(summary, dict)
+        summary["error_count"] = len(value)
+        summary.pop("block_types", None)
+    elif value is not None:
+        assert isinstance(summary, dict)
+        summary["has_error"] = True
+    return summary
+
+
+def _type_summary(value: object) -> dict[str, JsonValue]:
+    return {"type": type(value).__name__}

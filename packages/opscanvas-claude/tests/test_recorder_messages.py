@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -9,6 +10,12 @@ from opscanvas_core import RunStatus, SpanKind
 
 STARTED_AT = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 ENDED_AT = STARTED_AT + timedelta(seconds=2)
+
+
+def exported_json(value: object) -> str:
+    if hasattr(value, "model_dump"):
+        return json.dumps(value.model_dump(mode="json"), sort_keys=True)
+    return json.dumps(value, sort_keys=True)
 
 
 @dataclass
@@ -166,10 +173,11 @@ def test_assistant_messages_become_model_spans_with_provider_model_and_usage() -
     assert model_span.kind is SpanKind.model_call
     assert model_span.parent_id == root_span.id
     assert model_span.name == "claude-sonnet-4-5"
-    assert model_span.input_data == [
-        {"text": "I can help."},
-        {"id": "tool_1", "name": "search", "input": {"q": "refund"}},
-    ]
+    assert model_span.input_data == {
+        "type": "list",
+        "item_count": 2,
+        "block_types": ["TextBlock", "ToolUseBlock"],
+    }
     assert model_span.output_data == model_span.input_data
     assert model_span.usage is not None
     assert model_span.usage.input_tokens == 10
@@ -184,6 +192,7 @@ def test_assistant_messages_become_model_spans_with_provider_model_and_usage() -
     assert model_span.attributes["claude.uuid"] == "uuid_123"
     assert [event.name for event in model_span.events] == ["claude.tool_use"]
     assert model_span.events[0].attributes["name"] == "search"
+    assert model_span.events[0].attributes["input"] == {"type": "dict", "key_count": 1}
 
     assert exporter.runs == [run]
 
@@ -191,17 +200,19 @@ def test_assistant_messages_become_model_spans_with_provider_model_and_usage() -
 def test_user_tool_result_system_stream_and_unknown_messages_record_safe_events() -> None:
     recorder = ClaudeRunRecorder(run_id="run_123", started_at=STARTED_AT)
 
-    recorder.record_message(UserMessage(content={"role": "user", "text": "hello"}))
+    recorder.record_message(UserMessage(content={"role": "user", "text": "secret prompt"}))
     recorder.record_message(
         AssistantMessage(
             message_id="msg_123",
             model="claude-sonnet-4-5",
-            content=[ToolResultBlock("tool_1", "done")],
+            content=[ToolResultBlock("tool_1", "secret command output")],
             usage={},
         )
     )
-    recorder.record_message(SystemMessage(subtype="init", data={"cwd": "/tmp"}))
-    recorder.record_message(StreamEvent(event="content_block_delta", data={"delta": "hi"}))
+    recorder.record_message(SystemMessage(subtype="init", data={"cwd": "/private/project"}))
+    recorder.record_message(
+        StreamEvent(event="content_block_delta", data={"delta": "secret delta"})
+    )
     recorder.record_message(StrangeCustomMessage(payload=object()))
 
     run = recorder.finish(ENDED_AT)
@@ -213,12 +224,20 @@ def test_user_tool_result_system_stream_and_unknown_messages_record_safe_events(
         "claude.stream_event",
         "claude.message",
     ]
-    assert run.spans[0].events[0].attributes["content"] == {"role": "user", "text": "hello"}
+    assert run.spans[0].events[0].attributes["content"] == {"type": "dict", "key_count": 2}
+    assert run.spans[0].events[1].attributes["data"] == {"type": "dict", "key_count": 1}
+    assert run.spans[0].events[2].attributes["data"] == {"type": "dict", "key_count": 1}
     assert run.spans[0].events[-1].attributes["message_type"] == "StrangeCustomMessage"
 
     model_span = run.spans[1]
     assert [event.name for event in model_span.events] == ["claude.tool_result"]
     assert model_span.events[0].attributes["tool_use_id"] == "tool_1"
+    assert model_span.events[0].attributes["content"] == {"type": "str", "length": 21}
+    exported = exported_json(run)
+    assert "secret prompt" not in exported
+    assert "secret command output" not in exported
+    assert "/private/project" not in exported
+    assert "secret delta" not in exported
 
 
 def test_task_and_rate_limit_messages_record_allowlisted_events() -> None:
@@ -238,17 +257,17 @@ def test_task_and_rate_limit_messages_record_allowlisted_events() -> None:
     assert events[0].attributes == {
         "task_id": "task_1",
         "status": "running",
-        "message": "started",
+        "message": {"type": "str", "length": 7},
     }
     assert events[1].attributes == {
         "task_id": "task_1",
-        "message": "halfway",
+        "message": {"type": "str", "length": 7},
         "status": "running",
         "progress": 5,
         "total": 10,
     }
     assert events[2].attributes == {
-        "message": "slow down",
+        "message": {"type": "str", "length": 9},
         "delay_seconds": 30,
         "remaining": 2,
     }
@@ -338,6 +357,37 @@ def test_assistant_error_and_failed_task_notification_mark_run_failed() -> None:
     assert task_failed.finish(ENDED_AT).status is RunStatus.failed
 
 
+def test_error_payloads_are_summarized_without_provider_text() -> None:
+    recorder = ClaudeRunRecorder(run_id="run_errors", started_at=STARTED_AT)
+
+    recorder.record_message(
+        AssistantMessage(
+            message_id="msg_123",
+            model="claude-sonnet-4-5",
+            content=[],
+            usage={},
+            error={"message": "provider leaked /private/path"},
+        )
+    )
+    recorder.record_message(
+        ResultMessage(is_error=True, errors=["tool failed with secret stdout"])
+    )
+    run = recorder.finish(ENDED_AT)
+
+    model_span = run.spans[1]
+    assert model_span.attributes["claude.error"] == {"type": "dict", "key_count": 1}
+    assert run.metadata["claude.errors"] == {"type": "list", "item_count": 1, "error_count": 1}
+    assert run.spans[0].events[0].attributes["errors"] == {
+        "type": "list",
+        "item_count": 1,
+        "error_count": 1,
+    }
+    exported = exported_json(run)
+    assert "provider leaked" not in exported
+    assert "/private/path" not in exported
+    assert "secret stdout" not in exported
+
+
 def test_unknown_messages_do_not_collect_public_attrs_or_secrets() -> None:
     recorder = ClaudeRunRecorder(run_id="run_unknown", started_at=STARTED_AT)
 
@@ -363,6 +413,17 @@ def test_self_referential_allowed_payload_does_not_crash() -> None:
     recorder.record_message(SystemMessage(subtype="cycle", data={"payload": payload}))
     run = recorder.finish(ENDED_AT)
 
-    assert run.spans[0].events[0].attributes["data"] == {
-        "payload": {"name": "root", "child": "<cycle>"}
-    }
+    assert run.spans[0].events[0].attributes["data"] == {"type": "dict", "key_count": 1}
+
+
+def test_unknown_object_payloads_are_summarized_without_repr() -> None:
+    class SecretRepr:
+        def __repr__(self) -> str:
+            return "SECRET_REPR_LEAK"
+
+    recorder = ClaudeRunRecorder(run_id="run_repr", started_at=STARTED_AT)
+    recorder.record_message(SystemMessage(subtype="repr", data={"payload": SecretRepr()}))
+    run = recorder.finish(ENDED_AT)
+
+    assert run.spans[0].events[0].attributes["data"] == {"type": "dict", "key_count": 1}
+    assert "SECRET_REPR_LEAK" not in exported_json(run)

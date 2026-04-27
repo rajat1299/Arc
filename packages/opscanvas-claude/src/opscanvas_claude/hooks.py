@@ -13,6 +13,7 @@ from opscanvas_claude.recorder import (
     PROVIDER,
     RUNTIME,
     ClaudeRunRecorder,
+    _json_summary,
     _json_value,
 )
 
@@ -114,7 +115,7 @@ class ClaudeHookRecorder:
             name=_string(_get(hook_input, "tool_name")) or "claude tool",
             parent_id=parent_span.id,
             started_at=datetime.now(UTC),
-            input=_json_value(_get(hook_input, "tool_input")),
+            input=_json_summary(_get(hook_input, "tool_input")),
             attributes={
                 "runtime": RUNTIME,
                 "provider": PROVIDER,
@@ -135,7 +136,7 @@ class ClaudeHookRecorder:
             self._record_root_event("PostToolUse", hook_input, "unknown_tool_use_id")
             return
 
-        span.output_data = _json_value(_get(hook_input, "tool_response"))
+        span.output_data = _json_summary(_get(hook_input, "tool_response"))
         span.ended_at = datetime.now(UTC)
         self.recorder._add_event(span, _EVENT_NAMES["PostToolUse"], _hook_attributes(hook_input))
 
@@ -152,10 +153,10 @@ class ClaudeHookRecorder:
             return
 
         error = _get(hook_input, "error")
-        span.output_data = {"error": _json_value(error)}
+        span.output_data = {"error": _json_summary(error)}
         span.ended_at = datetime.now(UTC)
         span.attributes["status"] = "failed"
-        _set_attr(span.attributes, "claude.error", error)
+        span.attributes["claude.error"] = _json_summary(error)
         self.recorder._add_event(
             span,
             _EVENT_NAMES["PostToolUseFailure"],
@@ -296,7 +297,7 @@ def _hook_attributes(hook_input: object) -> dict[str, JsonValue]:
     for name in _allowed_fields(event_name):
         value = _get(hook_input, name)
         if value is not None:
-            attributes[name] = _json_value(value)
+            attributes[name] = _hook_field_value(name, value)
     if event_name == "UserPromptSubmit":
         prompt = _get(hook_input, "prompt")
         if isinstance(prompt, str):
@@ -304,6 +305,12 @@ def _hook_attributes(hook_input: object) -> dict[str, JsonValue]:
     elif event_name == "PreCompact":
         attributes["has_custom_instructions"] = _get(hook_input, "custom_instructions") is not None
     return attributes
+
+
+def _hook_field_value(name: str, value: object) -> JsonValue:
+    if name in {"tool_input", "tool_response", "error", "permission_suggestions"}:
+        return _json_summary(value)
+    return _json_value(value)
 
 
 def _allowed_fields(event_name: str | None) -> tuple[str, ...]:

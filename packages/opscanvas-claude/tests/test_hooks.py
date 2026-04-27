@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import sys
 import types
 from dataclasses import dataclass
@@ -14,6 +15,12 @@ from opscanvas_core import RunStatus, SpanKind
 
 STARTED_AT = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 ENDED_AT = STARTED_AT + timedelta(seconds=2)
+
+
+def exported_json(value: object) -> str:
+    if hasattr(value, "model_dump"):
+        return json.dumps(value.model_dump(mode="json"), sort_keys=True)
+    return json.dumps(value, sort_keys=True)
 
 
 @dataclass
@@ -112,7 +119,7 @@ def test_tool_hooks_open_and_close_tool_call_span(
             "hook_event_name": "PreToolUse",
             "tool_use_id": "tool_123",
             "tool_name": "Bash",
-            "tool_input": {"command": "pwd"},
+            "tool_input": {"command": "cat /private/secret.txt"},
             "session_id": "session_123",
         },
     ) == {}
@@ -123,8 +130,8 @@ def test_tool_hooks_open_and_close_tool_call_span(
             "hook_event_name": "PostToolUse",
             "tool_use_id": "tool_123",
             "tool_name": "Bash",
-            "tool_input": {"command": "pwd"},
-            "tool_response": {"stdout": "/tmp"},
+            "tool_input": {"command": "cat /private/secret.txt"},
+            "tool_response": {"stdout": "secret command output"},
         },
     ) == {}
 
@@ -132,8 +139,8 @@ def test_tool_hooks_open_and_close_tool_call_span(
     tool_span = next(span for span in run.spans if span.kind is SpanKind.tool_call)
     assert tool_span.name == "Bash"
     assert tool_span.parent_id == run.spans[0].id
-    assert tool_span.input_data == {"command": "pwd"}
-    assert tool_span.output_data == {"stdout": "/tmp"}
+    assert tool_span.input_data == {"type": "dict", "key_count": 1}
+    assert tool_span.output_data == {"type": "dict", "key_count": 1}
     assert tool_span.ended_at is not None
     assert tool_span.attributes["runtime"] == "claude-agent-sdk"
     assert tool_span.attributes["provider"] == "anthropic"
@@ -143,6 +150,11 @@ def test_tool_hooks_open_and_close_tool_call_span(
         "claude.pre_tool_use",
         "claude.post_tool_use",
     ]
+    assert tool_span.events[0].attributes["tool_input"] == {"type": "dict", "key_count": 1}
+    assert tool_span.events[1].attributes["tool_response"] == {"type": "dict", "key_count": 1}
+    exported = exported_json(run)
+    assert "cat /private/secret.txt" not in exported
+    assert "secret command output" not in exported
 
 
 def test_failure_hook_closes_span_and_marks_run_failed(
@@ -159,7 +171,7 @@ def test_failure_hook_closes_span_and_marks_run_failed(
             "hook_event_name": "PreToolUse",
             "tool_use_id": "tool_123",
             "tool_name": "Read",
-            "tool_input": {"file_path": "/missing"},
+            "tool_input": {"file_path": "/private/missing.txt"},
         },
     )
     run_hook(
@@ -169,17 +181,20 @@ def test_failure_hook_closes_span_and_marks_run_failed(
             "hook_event_name": "PostToolUseFailure",
             "tool_use_id": "tool_123",
             "tool_name": "Read",
-            "tool_input": {"file_path": "/missing"},
-            "error": "file does not exist",
+            "tool_input": {"file_path": "/private/missing.txt"},
+            "error": "file does not exist: /private/missing.txt",
         },
     )
 
     run = recorder.finish(ENDED_AT)
     tool_span = next(span for span in run.spans if span.kind is SpanKind.tool_call)
     assert run.status is RunStatus.failed
-    assert tool_span.attributes["claude.error"] == "file does not exist"
+    assert tool_span.attributes["claude.error"] == {"type": "str", "length": 41}
     assert tool_span.attributes["status"] == "failed"
-    assert tool_span.output_data == {"error": "file does not exist"}
+    assert tool_span.output_data == {"error": {"type": "str", "length": 41}}
+    exported = exported_json(run)
+    assert "/private/missing.txt" not in exported
+    assert "file does not exist" not in exported
 
 
 def test_subagent_hooks_open_and_close_nested_agent_span(
@@ -239,7 +254,7 @@ def test_missing_duplicate_and_out_of_order_hook_ids_record_safe_events(
             "hook_event_name": "PostToolUse",
             "tool_use_id": "missing",
             "tool_name": "Bash",
-            "tool_response": "done",
+            "tool_response": "secret done",
         },
     )
     run_hook(
@@ -254,7 +269,7 @@ def test_missing_duplicate_and_out_of_order_hook_ids_record_safe_events(
             "hook_event_name": "PostToolUse",
             "tool_use_id": "missing",
             "tool_name": "Bash",
-            "tool_response": "done again",
+            "tool_response": "secret done again",
         },
     )
 
@@ -284,7 +299,7 @@ def test_root_only_hooks_record_events(monkeypatch: pytest.MonkeyPatch) -> None:
             {
                 "hook_event_name": "PermissionRequest",
                 "tool_name": "Bash",
-                "tool_input": {"command": "rm -rf /tmp/nope"},
+                "tool_input": {"command": "rm -rf /private/nope"},
             },
         ),
         ("Notification", {"hook_event_name": "Notification", "message": "working"}),
@@ -319,7 +334,7 @@ def test_permission_request_uses_callback_tool_use_id_for_active_tool_span(
             "hook_event_name": "PreToolUse",
             "tool_use_id": "tool_123",
             "tool_name": "Bash",
-            "tool_input": {"command": "pwd"},
+            "tool_input": {"command": "cat /private/secret.txt"},
         },
     )
     run_hook_with_tool_use_id(
@@ -328,7 +343,7 @@ def test_permission_request_uses_callback_tool_use_id_for_active_tool_span(
         {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
-            "tool_input": {"command": "pwd"},
+            "tool_input": {"command": "cat /private/secret.txt"},
             "permission_suggestions": [{"decision": "allow"}],
         },
         "tool_123",
@@ -343,7 +358,8 @@ def test_permission_request_uses_callback_tool_use_id_for_active_tool_span(
         "claude.permission_request",
     ]
     assert tool_span.events[1].attributes["tool_name"] == "Bash"
-    assert tool_span.events[1].attributes["tool_input"] == {"command": "pwd"}
+    assert tool_span.events[1].attributes["tool_input"] == {"type": "dict", "key_count": 1}
+    assert "cat /private/secret.txt" not in exported_json(run)
 
 
 def test_secret_bearing_hook_fields_are_not_recorded(
@@ -404,6 +420,47 @@ def test_secret_bearing_hook_fields_are_not_recorded(
     assert "secret notification title" not in str(event_attributes)
     assert "secret compact instructions" not in str(event_attributes)
     assert "secret-transcript" not in str(event_attributes)
+
+
+def test_hook_error_and_arbitrary_repr_payloads_are_not_exported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SecretRepr:
+        def __repr__(self) -> str:
+            return "SECRET_REPR_LEAK"
+
+    install_fake_claude_sdk(monkeypatch)
+    recorder = ClaudeRunRecorder(run_id="run_repr_hook", started_at=STARTED_AT)
+    hooks = build_opscanvas_hooks(recorder)
+
+    run_hook(
+        hooks,
+        "PreToolUse",
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_use_id": "tool_123",
+            "tool_name": "Bash",
+            "tool_input": {"payload": SecretRepr()},
+        },
+    )
+    run_hook(
+        hooks,
+        "PostToolUseFailure",
+        {
+            "hook_event_name": "PostToolUseFailure",
+            "tool_use_id": "tool_123",
+            "tool_name": "Bash",
+            "tool_input": {"payload": SecretRepr()},
+            "error": SecretRepr(),
+        },
+    )
+
+    run = recorder.finish(ENDED_AT)
+    tool_span = next(span for span in run.spans if span.kind is SpanKind.tool_call)
+    assert tool_span.input_data == {"type": "dict", "key_count": 1}
+    assert tool_span.output_data == {"error": {"type": "SecretRepr"}}
+    assert tool_span.attributes["claude.error"] == {"type": "SecretRepr"}
+    assert "SECRET_REPR_LEAK" not in exported_json(run)
 
 
 def test_missing_sdk_raises_only_when_helper_is_called(

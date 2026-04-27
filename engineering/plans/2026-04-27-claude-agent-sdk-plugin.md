@@ -243,4 +243,3 @@ Product and engineering docs are local-only and gitignored in the main checkout.
 - `uv run pytest packages/opscanvas-claude/tests -q`
 
 **Commit:** only if review fixes are needed.
-
