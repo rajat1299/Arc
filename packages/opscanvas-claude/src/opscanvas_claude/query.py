@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import importlib
 import inspect
@@ -9,12 +10,10 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import is_dataclass, replace
 from typing import Any, Protocol, cast
 
-from pydantic import JsonValue
-
 from opscanvas_claude.config import OpsCanvasConfig
 from opscanvas_claude.exporter import OpsCanvasExporter
 from opscanvas_claude.hooks import build_opscanvas_hooks
-from opscanvas_claude.recorder import ClaudeRunRecorder, _json_value
+from opscanvas_claude.recorder import ClaudeRunRecorder
 
 QueryFunc = Callable[..., object]
 
@@ -51,6 +50,10 @@ async def traced_query(
         async for message in _call_query(query_func, prompt=prompt, options=effective_options):
             recorder.record_message(message)
             yield message
+    except (GeneratorExit, asyncio.CancelledError) as exc:
+        _record_interruption(recorder, exc)
+        recorder.finish()
+        raise
     except BaseException as exc:
         _record_exception(recorder, exc)
         recorder.finish()
@@ -121,13 +124,14 @@ async def _call_query(
 def _record_exception(recorder: ClaudeRunRecorder, exc: BaseException) -> None:
     recorder._mark_failed()
     recorder._metadata["claude.error.type"] = type(exc).__name__
-    message = str(exc)
-    if message:
-        recorder._metadata["claude.error.message"] = _safe_error_message(message)
 
 
-def _safe_error_message(message: str) -> JsonValue:
-    return _json_value(message)
+def _record_interruption(recorder: ClaudeRunRecorder, exc: BaseException) -> None:
+    recorder._mark_interrupted()
+    recorder._metadata["claude.error.type"] = type(exc).__name__
+    recorder._metadata["claude.interrupted_reason"] = (
+        "generator_close" if isinstance(exc, GeneratorExit) else "cancelled"
+    )
 
 
 def _is_dataclass_instance(value: object) -> bool:

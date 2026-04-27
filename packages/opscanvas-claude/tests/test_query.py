@@ -143,6 +143,9 @@ def test_traced_query_imports_public_query_only_when_invoked(
 
 def test_traced_query_marks_failed_run_and_reraises_on_query_error() -> None:
     exporter = OpsCanvasExporter()
+    secret = "sk-test-secret"
+    prompt = "private customer prompt"
+    path = "/Users/person/private/file.txt"
 
     async def fake_query(**kwargs: object) -> AsyncIterator[object]:
         del kwargs
@@ -152,13 +155,13 @@ def test_traced_query_marks_failed_run_and_reraises_on_query_error() -> None:
             content=[],
             usage={"input_tokens": 1},
         )
-        raise RuntimeError("claude cli failed")
+        raise RuntimeError(f"claude cli failed for {prompt} with {secret} at {path}")
 
     with pytest.raises(RuntimeError, match="claude cli failed"):
         asyncio.run(
             collect_messages(
                 traced_query(
-                    prompt="hello",
+                    prompt=prompt,
                     exporter=exporter,
                     run_id="run_failed",
                     query_func=fake_query,
@@ -170,8 +173,45 @@ def test_traced_query_marks_failed_run_and_reraises_on_query_error() -> None:
     run = exporter.runs[0]
     assert run.status is RunStatus.failed
     assert run.metadata["claude.error.type"] == "RuntimeError"
-    assert run.metadata["claude.error.message"] == "claude cli failed"
+    assert "claude.error.message" not in run.metadata
+    assert secret not in str(run.metadata)
+    assert prompt not in str(run.metadata)
+    assert path not in str(run.metadata)
     assert len([span for span in run.spans if span.kind is SpanKind.model_call]) == 1
+
+
+def test_traced_query_early_aclose_finishes_interrupted_not_failed() -> None:
+    exporter = OpsCanvasExporter()
+
+    async def fake_query(**kwargs: object) -> AsyncIterator[object]:
+        del kwargs
+        yield AssistantMessage(
+            message_id="msg_123",
+            model="claude-sonnet-4-5",
+            content=[],
+            usage={"input_tokens": 1},
+        )
+        yield ResultMessage()
+
+    async def close_after_first_message() -> None:
+        stream = traced_query(
+            prompt="hello",
+            exporter=exporter,
+            run_id="run_closed",
+            query_func=fake_query,
+        )
+        first = await anext(stream)
+        assert isinstance(first, AssistantMessage)
+        await stream.aclose()
+
+    asyncio.run(close_after_first_message())
+
+    assert len(exporter.runs) == 1
+    run = exporter.runs[0]
+    assert run.status is RunStatus.interrupted
+    assert run.metadata["claude.interrupted_reason"] == "generator_close"
+    assert run.metadata["claude.error.type"] == "GeneratorExit"
+    assert "claude.error.message" not in run.metadata
 
 
 def test_traced_query_preserves_dataclass_options_and_customer_hooks_first(
