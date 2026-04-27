@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import JsonValue
 
 if TYPE_CHECKING:
-    from opscanvas_core.events import Run, Span, Usage  # type: ignore[import-untyped]
+    from opscanvas_core.events import Run, Span, Usage
 
 ClickHouseRow = dict[str, Any]
 
