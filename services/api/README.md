@@ -17,9 +17,9 @@ Implemented routes:
 
 The run store defaults to process-local memory. Set
 `OPSCANVAS_API_STORE_BACKEND=clickhouse` to use the local ClickHouse adapter instead.
-The API does not yet write to a queue, redaction pipeline, auth layer, budget
-engine, or billing integration. Submitting a duplicate run ID replaces the prior
-run deliberately so local/dev ingestion can be retried idempotently.
+The API does not yet write to a queue, redaction pipeline, budget engine, or
+billing integration. Submitting a duplicate run ID replaces the prior run
+deliberately so local/dev ingestion can be retried idempotently.
 
 ## Pricing V0 Cost Semantics
 
@@ -87,6 +87,32 @@ or run ID with:
 ```sh
 uv run python scripts/smoke_ingest.py --api-url http://127.0.0.1:8001 --run-id run_ui_fixture
 ```
+
+## Auth V0
+
+API-key auth is disabled by default so unauthenticated local development and the
+default smoke flow keep working. To enable the v0 auth scaffold locally, start
+the API with bearer keys from environment configuration:
+
+```sh
+OPSCANVAS_API_AUTH_ENABLED=true \
+OPSCANVAS_API_API_KEYS=dev_key_... \
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
+```
+
+Then pass the same key to the smoke script:
+
+```sh
+uv run python scripts/smoke_ingest.py --api-key dev_key_...
+```
+
+When auth is enabled, `/healthz` stays public. `/v1/ingest` and `/v1/runs`
+routes require `Authorization: Bearer <key>`. Keys are configured from local/dev
+environment variables for v0.
+
+Auth v0 does not provide an org, project, or user database; RBAC; key-management
+UI; key rotation; or rate limits. Treat it as an authenticated local/dev
+deployment scaffold, not a production auth system.
 
 ## ClickHouse Mode
 

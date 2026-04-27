@@ -107,6 +107,32 @@ uv run python scripts/smoke_ingest.py --run-id run_ui_fixture
 Use `--api-url http://127.0.0.1:8001` when the API is on a different port.
 On success, the script prints the web URL to open with `?runId=<id>`.
 
+## API Auth V0
+
+API-key auth is disabled by default for local development. To exercise the v0
+auth scaffold locally, start the API with one or more environment-configured
+bearer keys:
+
+```sh
+OPSCANVAS_API_AUTH_ENABLED=true \
+OPSCANVAS_API_API_KEYS=dev_key_... \
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
+```
+
+Then run the smoke script with the same key:
+
+```sh
+uv run python scripts/smoke_ingest.py --api-key dev_key_...
+```
+
+Auth v0 is a local/dev scaffold for bearer API keys configured through the API
+environment. `/healthz` remains public. `/v1/ingest` and `/v1/runs` routes are
+protected only when auth is enabled.
+
+Auth v0 does not include an org, project, or user database; RBAC; UI management;
+key rotation; or rate limits. It is a scaffold for authenticated local and dev
+deployments, not a production auth system.
+
 ## ClickHouse API Mode
 
 Memory mode is the default and does not require Docker. To run the API with the

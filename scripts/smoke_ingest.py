@@ -277,11 +277,14 @@ def request_json(
     path: str,
     *,
     payload: dict[str, Any] | None = None,
+    api_key: str | None = None,
     timeout: float,
 ) -> SmokeResponse:
     url = urljoin(api_url.rstrip("/") + "/", path.lstrip("/"))
     data = None
     headers = {"Accept": "application/json"}
+    if api_key is not None:
+        headers["Authorization"] = f"Bearer {api_key}"
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -359,13 +362,26 @@ def require_rich_spans(spans: Any, run_id: str, context: str) -> None:
     )
 
 
-def run_smoke(api_url: str, timeout: float, run_id: str | None, web_url: str) -> None:
+def run_smoke(
+    api_url: str,
+    timeout: float,
+    run_id: str | None,
+    web_url: str,
+    api_key: str | None = None,
+) -> None:
     run_id = run_id or f"run_smoke_{int(time.time())}"
     payload = canonical_run_payload(run_id)
 
     print(f"API: {api_url}")
 
-    ingest = request_json("POST", api_url, "/v1/ingest/runs", payload=payload, timeout=timeout)
+    ingest = request_json(
+        "POST",
+        api_url,
+        "/v1/ingest/runs",
+        payload=payload,
+        api_key=api_key,
+        timeout=timeout,
+    )
     require(ingest.status == 202, f"Expected ingest status 202, got {ingest.status}")
     require(isinstance(ingest.body, dict), "Expected ingest response to be a JSON object")
     require(ingest.body.get("run_id") == run_id, "Ingest response did not echo the run ID")
@@ -375,7 +391,7 @@ def run_smoke(api_url: str, timeout: float, run_id: str | None, web_url: str) ->
     )
     print(f"POST /v1/ingest/runs -> {ingest.status} accepted {run_id}")
 
-    runs = request_json("GET", api_url, "/v1/runs", timeout=timeout)
+    runs = request_json("GET", api_url, "/v1/runs", api_key=api_key, timeout=timeout)
     require(runs.status == 200, f"Expected run list status 200, got {runs.status}")
     require(isinstance(runs.body, list), "Expected run list response to be a JSON array")
     require(
@@ -384,7 +400,7 @@ def run_smoke(api_url: str, timeout: float, run_id: str | None, web_url: str) ->
     )
     print(f"GET /v1/runs -> {runs.status} found {run_id}")
 
-    run = request_json("GET", api_url, f"/v1/runs/{run_id}", timeout=timeout)
+    run = request_json("GET", api_url, f"/v1/runs/{run_id}", api_key=api_key, timeout=timeout)
     require(run.status == 200, f"Expected run detail status 200, got {run.status}")
     require(isinstance(run.body, dict), "Expected run detail response to be a JSON object")
     require(run.body.get("id") == run_id, "Run detail response returned the wrong run")
@@ -395,7 +411,13 @@ def run_smoke(api_url: str, timeout: float, run_id: str | None, web_url: str) ->
     require_rich_spans(run.body.get("spans"), run_id, "Run detail")
     print(f"GET /v1/runs/{run_id} -> {run.status} returned {len(EXPECTED_SPAN_KINDS)} spans")
 
-    spans = request_json("GET", api_url, f"/v1/runs/{run_id}/spans", timeout=timeout)
+    spans = request_json(
+        "GET",
+        api_url,
+        f"/v1/runs/{run_id}/spans",
+        api_key=api_key,
+        timeout=timeout,
+    )
     require(spans.status == 200, f"Expected run spans status 200, got {spans.status}")
     require_rich_spans(spans.body, run_id, "Run spans endpoint")
     print(
@@ -403,7 +425,7 @@ def run_smoke(api_url: str, timeout: float, run_id: str | None, web_url: str) ->
         f"returned {len(EXPECTED_SPAN_KINDS)} spans"
     )
 
-    metrics = request_json("GET", api_url, "/v1/runs/metrics", timeout=timeout)
+    metrics = request_json("GET", api_url, "/v1/runs/metrics", api_key=api_key, timeout=timeout)
     require(metrics.status == 200, f"Expected run metrics status 200, got {metrics.status}")
     require(isinstance(metrics.body, dict), "Expected metrics response to be a JSON object")
     require(
@@ -444,6 +466,10 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_WEB_URL,
         help=f"Base URL for the local web app. Defaults to {DEFAULT_WEB_URL}.",
     )
+    parser.add_argument(
+        "--api-key",
+        help="Optional bearer API key for authenticated local API smoke runs.",
+    )
     return parser.parse_args()
 
 
@@ -455,6 +481,7 @@ def main() -> int:
             timeout=args.timeout,
             run_id=args.run_id,
             web_url=args.web_url,
+            api_key=args.api_key,
         )
     except SmokeError as error:
         print(f"Smoke ingest failed: {error}", file=sys.stderr)
