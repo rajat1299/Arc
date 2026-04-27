@@ -1,13 +1,18 @@
 from datetime import datetime
+from decimal import Decimal
 from math import ceil
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from opscanvas_api.store import RunStore
-from opscanvas_core.events import Run, RunStatus, Span
+from opscanvas_core.events import Run, RunStatus, Span, SpanKind
+from opscanvas_core.pricing import compute_cost
 from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
+
+_OPENAI_AGENTS_RUNTIMES = frozenset({"openai-agents", "opscanvas-agents", "openai_agents"})
+_USD_QUANTUM = Decimal("0.0000000001")
 
 
 class RunSummary(BaseModel):
@@ -45,6 +50,7 @@ def get_run_store(request: Request) -> RunStore:
 
 
 def _summary_from_run(run: Run) -> RunSummary:
+    cost_usd = _effective_cost_usd(run)
     return RunSummary(
         id=run.id,
         schema_version=run.schema_version,
@@ -57,7 +63,7 @@ def _summary_from_run(run: Run) -> RunSummary:
         workflow_name=run.workflow_name,
         span_count=len(run.spans),
         event_count=sum(len(span.events) for span in run.spans),
-        cost_usd=run.usage.cost_usd if run.usage is not None else None,
+        cost_usd=float(cost_usd) if cost_usd is not None else None,
         total_tokens=run.usage.total_tokens if run.usage is not None else None,
     )
 
@@ -83,6 +89,75 @@ def _p95_latency_ms(runs: list[Run]) -> int | None:
 
     index = ceil(0.95 * len(latencies_ms)) - 1
     return latencies_ms[index]
+
+
+def _effective_cost_usd(run: Run) -> Decimal | None:
+    if run.usage is not None and run.usage.cost_usd is not None:
+        return _decimal_usd(run.usage.cost_usd)
+    return _computed_run_cost_usd(run)
+
+
+def _computed_run_cost_usd(run: Run) -> Decimal | None:
+    total = Decimal("0")
+    span_cost_found = False
+    for span in run.spans:
+        span_cost = _span_cost_usd(run, span)
+        if span_cost is None:
+            continue
+        span_cost_found = True
+        total += span_cost
+
+    if span_cost_found:
+        return total.quantize(_USD_QUANTUM)
+
+    provider = _metadata_string(run, "provider")
+    model = _metadata_string(run, "model")
+    if provider is None or model is None:
+        return None
+
+    cost = compute_cost(run.usage, model=model, provider=provider)
+    return cost.total_cost_usd if cost is not None else None
+
+
+def _span_cost_usd(run: Run, span: Span) -> Decimal | None:
+    if span.kind != SpanKind.model_call:
+        return None
+
+    provider = _span_provider(run, span)
+    model = _span_model(span)
+    if provider is None or model is None:
+        return None
+
+    cost = compute_cost(span.usage, model=model, provider=provider)
+    return cost.total_cost_usd if cost is not None else None
+
+
+def _span_provider(run: Run, span: Span) -> str | None:
+    provider = _attribute_string(span, "provider")
+    if provider is not None:
+        return provider
+
+    if run.runtime.lower() in _OPENAI_AGENTS_RUNTIMES:
+        return "openai"
+    return None
+
+
+def _span_model(span: Span) -> str | None:
+    return _attribute_string(span, "model") or _attribute_string(span, "agent.model")
+
+
+def _attribute_string(span: Span, key: str) -> str | None:
+    value = span.attributes.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _metadata_string(run: Run, key: str) -> str | None:
+    value = run.metadata.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _decimal_usd(value: float) -> Decimal:
+    return Decimal(str(value)).quantize(_USD_QUANTUM)
 
 
 @router.get("", response_model=list[RunSummary])
@@ -114,10 +189,11 @@ def get_run_metrics(
         failed_count=sum(1 for run in runs if run.status == RunStatus.failed),
         running_count=sum(1 for run in runs if run.status == RunStatus.running),
         suboptimal_count=sum(1 for run in runs if run.status == RunStatus.suboptimal),
-        total_cost_usd=sum(
-            run.usage.cost_usd
-            for run in runs
-            if run.usage is not None and run.usage.cost_usd is not None
+        total_cost_usd=float(
+            sum(
+                ((_effective_cost_usd(run) or Decimal("0")) for run in runs),
+                Decimal("0"),
+            ).quantize(_USD_QUANTUM)
         ),
         total_tokens=sum(
             run.usage.total_tokens
