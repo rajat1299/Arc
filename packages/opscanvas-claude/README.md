@@ -2,10 +2,11 @@
 
 Claude Agent SDK integration package for OpsCanvas.
 
-This package provides shared configuration, ingest client/exporter helpers, and
-Claude Agent SDK recorders for canonical OpsCanvas runs. The package can be
-imported without `claude-agent-sdk`; Claude-specific hook helpers import the SDK
-only when called.
+This package provides shared configuration, ingest client/exporter helpers,
+Claude Agent SDK recorders, hook helpers, and a `traced_query()` wrapper for
+canonical OpsCanvas runs. The package can be imported without
+`claude-agent-sdk`; Claude-specific runtime helpers import the SDK only when
+called.
 
 Install the optional Claude SDK dependency when using Claude runtime helpers:
 
@@ -13,7 +14,24 @@ Install the optional Claude SDK dependency when using Claude runtime helpers:
 pip install 'opscanvas-claude[claude-agent-sdk]'
 ```
 
-Manual hook recording:
+Basic query tracing:
+
+```python
+from opscanvas_claude import traced_query
+
+async for message in traced_query(
+    prompt="Summarize this repository",
+    workflow_name="repository summary",
+):
+    print(message)
+```
+
+`traced_query()` yields the same Claude Agent SDK messages produced by
+`claude_agent_sdk.query`, records each message into one canonical run, and
+appends OpsCanvas hook observers to `ClaudeAgentOptions` when it can do so
+without mutating the provided options object.
+
+Advanced manual hook recording:
 
 ```python
 from claude_agent_sdk import ClaudeAgentOptions, query
