@@ -47,6 +47,48 @@ def test_ingest_accepts_configured_bearer_key_when_auth_enabled(auth_enabled: No
     assert response.status_code == 202
 
 
+def test_malformed_ingest_json_without_credentials_returns_401_before_body_parse(
+    auth_enabled: None,
+) -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/ingest/runs",
+        content="{",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_malformed_ingest_json_with_invalid_credentials_returns_401_before_body_parse(
+    auth_enabled: None,
+) -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/ingest/runs",
+        content="{",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer wrong"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_malformed_ingest_json_with_valid_credentials_returns_422(auth_enabled: None) -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/ingest/runs",
+        content="{",
+        headers={"Content-Type": "application/json", **AUTH_HEADERS},
+    )
+
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
     [
