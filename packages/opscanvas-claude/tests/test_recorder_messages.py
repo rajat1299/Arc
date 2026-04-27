@@ -116,6 +116,12 @@ class UnknownSdkLikeMessage:
 
 
 @dataclass
+class UnknownDataclassMessage:
+    api_key: str
+    prompt: str
+
+
+@dataclass
 class CyclicPayload:
     name: str
     child: object | None = None
@@ -336,16 +342,17 @@ def test_unknown_messages_do_not_collect_public_attrs_or_secrets() -> None:
     recorder = ClaudeRunRecorder(run_id="run_unknown", started_at=STARTED_AT)
 
     recorder.record_message(UnknownSdkLikeMessage())
+    recorder.record_message(UnknownDataclassMessage(api_key="sk-secret", prompt="private prompt"))
     run = recorder.finish(ENDED_AT)
 
-    attributes = run.spans[0].events[0].attributes
-    assert attributes == {
-        "message_type": "UnknownSdkLikeMessage",
-        "summary": "<UnknownSdkLikeMessage>",
-    }
-    assert "public_secret" not in attributes
-    assert "payload" not in attributes
-    assert "sk-secret" not in str(attributes)
+    custom_attributes = run.spans[0].events[0].attributes
+    dataclass_attributes = run.spans[0].events[1].attributes
+    assert custom_attributes == {"message_type": "UnknownSdkLikeMessage"}
+    assert dataclass_attributes == {"message_type": "UnknownDataclassMessage"}
+    assert "public_secret" not in custom_attributes
+    assert "payload" not in custom_attributes
+    assert "sk-secret" not in str(run.spans[0].events)
+    assert "private prompt" not in str(run.spans[0].events)
 
 
 def test_self_referential_allowed_payload_does_not_crash() -> None:

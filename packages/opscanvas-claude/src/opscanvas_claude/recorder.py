@@ -315,10 +315,7 @@ def _message_attributes(message: object) -> dict[str, JsonValue]:
 
 
 def _unknown_message_attributes(message: object) -> dict[str, JsonValue]:
-    return {
-        "message_type": type(message).__name__,
-        "summary": _bounded_repr(message),
-    }
+    return {"message_type": type(message).__name__}
 
 
 def _usage_from(value: object, *, cost_usd: float | None = None) -> Usage | None:
