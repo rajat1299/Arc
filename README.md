@@ -170,8 +170,9 @@ metrics, restarts the API process, then queries the same run again:
 uv run python scripts/smoke_clickhouse_persistence.py
 ```
 
-Use `--port 18081` if the default smoke port is already occupied. The script
-fails rather than reusing an existing API process.
+Use `--api-key dev_key_...` when ambient API auth is enabled. Use
+`--port 18081` if the default smoke port is already occupied. The script fails
+rather than reusing an existing API process.
 
 Existing ClickHouse dev volumes created before the `runs.environment` column was
 added will not be updated by `CREATE TABLE IF NOT EXISTS`. Recreate dev volumes:

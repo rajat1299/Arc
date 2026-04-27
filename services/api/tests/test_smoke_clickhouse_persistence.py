@@ -42,8 +42,8 @@ def test_run_persistence_smoke_restarts_api_with_clickhouse_backend(
 ) -> None:
     processes = [FakeProcess(), FakeProcess()]
     popen_calls: list[dict[str, Any]] = []
-    smoke_calls: list[tuple[str, str]] = []
-    verify_calls: list[tuple[str, str]] = []
+    smoke_calls: list[tuple[str, str, str | None]] = []
+    verify_calls: list[tuple[str, str, str | None]] = []
 
     def fake_popen(command: list[str], **kwargs: Any) -> FakeProcess:
         popen_calls.append({"command": command, **kwargs})
@@ -55,12 +55,16 @@ def test_run_persistence_smoke_restarts_api_with_clickhouse_backend(
     monkeypatch.setattr(
         smoke_clickhouse_persistence,
         "run_smoke",
-        lambda api_url, timeout, run_id, web_url: smoke_calls.append((api_url, run_id or "")),
+        lambda api_url, timeout, run_id, web_url, api_key=None: smoke_calls.append(
+            (api_url, run_id or "", api_key)
+        ),
     )
     monkeypatch.setattr(
         smoke_clickhouse_persistence,
         "verify_persisted_run",
-        lambda api_url, timeout, run_id: verify_calls.append((api_url, run_id)),
+        lambda api_url, timeout, run_id, api_key=None: verify_calls.append(
+            (api_url, run_id, api_key)
+        ),
     )
 
     smoke_clickhouse_persistence.run_persistence_smoke(
@@ -75,11 +79,12 @@ def test_run_persistence_smoke_restarts_api_with_clickhouse_backend(
         clickhouse_password="secret",
         clickhouse_database="opscanvas",
         clickhouse_secure=False,
+        api_key="dev_key_test",
     )
 
     assert len(popen_calls) == 2
-    assert smoke_calls == [("http://127.0.0.1:18080", "run_test")]
-    assert verify_calls == [("http://127.0.0.1:18080", "run_test")]
+    assert smoke_calls == [("http://127.0.0.1:18080", "run_test", "dev_key_test")]
+    assert verify_calls == [("http://127.0.0.1:18080", "run_test", "dev_key_test")]
     assert all(process.terminated and process.waited for process in processes)
     for call in popen_calls:
         env = call["env"]
@@ -107,4 +112,5 @@ def test_run_persistence_smoke_refuses_occupied_api_port(
             clickhouse_password="secret",
             clickhouse_database="opscanvas",
             clickhouse_secure=False,
+            api_key=None,
         )

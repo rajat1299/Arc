@@ -122,8 +122,13 @@ def wait_for_api(process: subprocess.Popen[str], api_url: str, timeout: float) -
     raise SmokeError(f"API did not become healthy at {api_url} within {timeout:g}s: {last_error}")
 
 
-def verify_persisted_run(api_url: str, timeout: float, run_id: str) -> None:
-    runs = request_json("GET", api_url, "/v1/runs", timeout=timeout)
+def verify_persisted_run(
+    api_url: str,
+    timeout: float,
+    run_id: str,
+    api_key: str | None = None,
+) -> None:
+    runs = request_json("GET", api_url, "/v1/runs", api_key=api_key, timeout=timeout)
     require(runs.status == 200, f"Expected run list status 200 after restart, got {runs.status}")
     require(isinstance(runs.body, list), "Expected restarted run list response to be a JSON array")
     require(
@@ -132,7 +137,7 @@ def verify_persisted_run(api_url: str, timeout: float, run_id: str) -> None:
     )
     print(f"After restart: GET /v1/runs -> {runs.status} found {run_id}")
 
-    run = request_json("GET", api_url, f"/v1/runs/{run_id}", timeout=timeout)
+    run = request_json("GET", api_url, f"/v1/runs/{run_id}", api_key=api_key, timeout=timeout)
     require(run.status == 200, f"Expected run detail status 200 after restart, got {run.status}")
     require(isinstance(run.body, dict), "Expected restarted run detail to be a JSON object")
     require(run.body.get("id") == run_id, "Restarted run detail returned the wrong run")
@@ -142,7 +147,13 @@ def verify_persisted_run(api_url: str, timeout: float, run_id: str) -> None:
         f"returned {len(EXPECTED_SPAN_KINDS)} spans"
     )
 
-    spans = request_json("GET", api_url, f"/v1/runs/{run_id}/spans", timeout=timeout)
+    spans = request_json(
+        "GET",
+        api_url,
+        f"/v1/runs/{run_id}/spans",
+        api_key=api_key,
+        timeout=timeout,
+    )
     require(spans.status == 200, f"Expected run spans status 200 after restart, got {spans.status}")
     require_rich_spans(spans.body, run_id, "Restarted run spans endpoint")
     print(
@@ -150,7 +161,7 @@ def verify_persisted_run(api_url: str, timeout: float, run_id: str) -> None:
         f"returned {len(EXPECTED_SPAN_KINDS)} spans"
     )
 
-    metrics = request_json("GET", api_url, "/v1/runs/metrics", timeout=timeout)
+    metrics = request_json("GET", api_url, "/v1/runs/metrics", api_key=api_key, timeout=timeout)
     require(
         metrics.status == 200,
         f"Expected metrics status 200 after restart, got {metrics.status}",
@@ -173,6 +184,7 @@ def run_persistence_smoke(
     clickhouse_password: str,
     clickhouse_database: str,
     clickhouse_secure: bool,
+    api_key: str | None = None,
 ) -> None:
     if is_port_open(host, port):
         raise SmokeError(
@@ -197,7 +209,13 @@ def run_persistence_smoke(
     first_process = start_api(**api_kwargs)
     try:
         wait_for_api(first_process, api_url, timeout)
-        run_smoke(api_url=api_url, timeout=timeout, run_id=run_id, web_url=web_url)
+        run_smoke(
+            api_url=api_url,
+            timeout=timeout,
+            run_id=run_id,
+            web_url=web_url,
+            api_key=api_key,
+        )
     finally:
         stop_api(first_process)
 
@@ -208,7 +226,7 @@ def run_persistence_smoke(
     second_process = start_api(**api_kwargs)
     try:
         wait_for_api(second_process, api_url, timeout)
-        verify_persisted_run(api_url, timeout, run_id)
+        verify_persisted_run(api_url, timeout, run_id, api_key=api_key)
     finally:
         stop_api(second_process)
 
@@ -251,6 +269,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clickhouse-password", default="opscanvas_dev_password")
     parser.add_argument("--clickhouse-database", default="opscanvas")
     parser.add_argument("--clickhouse-secure", action="store_true")
+    parser.add_argument(
+        "--api-key",
+        help="Optional bearer API key for authenticated local API smoke runs.",
+    )
     return parser.parse_args()
 
 
@@ -269,6 +291,7 @@ def main() -> int:
             clickhouse_password=args.clickhouse_password,
             clickhouse_database=args.clickhouse_database,
             clickhouse_secure=args.clickhouse_secure,
+            api_key=args.api_key,
         )
     except SmokeError as error:
         print(f"ClickHouse persistence smoke failed: {error}", file=sys.stderr)
