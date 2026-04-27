@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
+from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 from opscanvas_core import (
     Run,
@@ -88,7 +87,7 @@ class ClaudeRunRecorder:
         self._add_event(
             self._root_span,
             "claude.message",
-            {"message_type": message_type, "message": _json_value(message)},
+            _unknown_message_attributes(message),
         )
 
     def finish(self, ended_at: datetime | None = None) -> Run:
@@ -134,7 +133,7 @@ class ClaudeRunRecorder:
         _set_if_present(attributes, "claude.uuid", _get(message, "uuid", None))
         if error is not None:
             attributes["claude.error"] = _json_value(error)
-            self._status = RunStatus.failed
+            self._mark_failed()
 
         span = Span(
             id=f"{self.run_id}_model_{len(self._spans)}",
@@ -177,9 +176,9 @@ class ClaudeRunRecorder:
             _set_if_present(self._metadata, metadata_name, _get(message, source_name, None))
 
         if _truthy(_get(message, "is_error", None)) or _get(message, "errors", None):
-            self._status = RunStatus.failed
+            self._mark_failed()
         elif _indicates_interrupted(_get(message, "stop_reason", None)):
-            self._status = RunStatus.interrupted
+            self._mark_interrupted()
 
     def _record_system_or_task_message(self, message: object, message_type: str) -> None:
         event_name = {
@@ -193,8 +192,15 @@ class ClaudeRunRecorder:
 
         status = _get(message, "status", None)
         if _indicates_failed(status):
-            self._status = RunStatus.failed
+            self._mark_failed()
         elif _indicates_interrupted(status):
+            self._mark_interrupted()
+
+    def _mark_failed(self) -> None:
+        self._status = RunStatus.failed
+
+    def _mark_interrupted(self) -> None:
+        if self._status is not RunStatus.failed:
             self._status = RunStatus.interrupted
 
     def _add_event(self, span: Span, name: str, attributes: dict[str, JsonValue]) -> None:
@@ -244,11 +250,75 @@ def _block_attributes(block: object) -> dict[str, JsonValue]:
     return attributes
 
 
+_MESSAGE_FIELDS: dict[str, tuple[str, ...]] = {
+    "ResultMessage": (
+        "total_cost_usd",
+        "usage",
+        "is_error",
+        "errors",
+        "stop_reason",
+        "session_id",
+        "num_turns",
+        "duration_ms",
+        "duration_api_ms",
+    ),
+    "SystemMessage": ("subtype", "data"),
+    "TaskStartedMessage": (
+        "task_id",
+        "parent_task_id",
+        "description",
+        "message",
+        "status",
+        "metadata",
+    ),
+    "TaskProgressMessage": (
+        "task_id",
+        "message",
+        "status",
+        "progress",
+        "current",
+        "total",
+        "metadata",
+    ),
+    "TaskNotificationMessage": ("task_id", "status", "message", "metadata"),
+    "StreamEvent": ("event", "data"),
+    "RateLimitEvent": (
+        "message",
+        "delay_seconds",
+        "retry_after",
+        "reset_at",
+        "resets_at",
+        "limit",
+        "remaining",
+    ),
+    "ToolUseBlock": ("id", "name", "input"),
+    "ToolResultBlock": ("tool_use_id", "content", "is_error"),
+    "ServerToolUseBlock": ("id", "name", "input"),
+    "ServerToolResultBlock": ("tool_use_id", "content", "is_error"),
+    "TextBlock": ("text",),
+    "ThinkingBlock": ("thinking", "text", "signature"),
+}
+
+
 def _message_attributes(message: object) -> dict[str, JsonValue]:
-    value = _json_value(message)
-    if isinstance(value, dict):
-        return value
-    return {"value": value}
+    message_type = type(message).__name__
+    fields_to_record = _MESSAGE_FIELDS.get(message_type)
+    if fields_to_record is None:
+        return _unknown_message_attributes(message)
+
+    attributes: dict[str, JsonValue] = {}
+    for name in fields_to_record:
+        value = _get(message, name, None)
+        if value is not None:
+            attributes[name] = _json_value(value)
+    return attributes
+
+
+def _unknown_message_attributes(message: object) -> dict[str, JsonValue]:
+    return {
+        "message_type": type(message).__name__,
+        "summary": _bounded_repr(message),
+    }
 
 
 def _usage_from(value: object, *, cost_usd: float | None = None) -> Usage | None:
@@ -338,28 +408,51 @@ def _indicates_interrupted(value: object) -> bool:
 
 
 def _json_value(value: object) -> JsonValue:
+    return _safe_json_value(value, set())
+
+
+def _safe_json_value(value: object, seen: set[int]) -> JsonValue:
     if value is None or isinstance(value, str | int | float | bool):
         return value
+    value_id = id(value)
+    if value_id in seen:
+        return "<cycle>"
     if isinstance(value, list):
-        return [_json_value(item) for item in value]
-    if isinstance(value, tuple):
-        return [_json_value(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if is_dataclass(value) and not isinstance(value, type):
-        return _json_value(asdict(value))
-
-    public_attrs: dict[str, Any] = {}
-    for name in dir(value):
-        if name.startswith("_"):
-            continue
+        seen.add(value_id)
         try:
-            attr = getattr(value, name)
-        except Exception:
-            continue
-        if callable(attr):
-            continue
-        public_attrs[name] = attr
-    if public_attrs:
-        return _json_value(public_attrs)
-    return str(value)
+            return [_safe_json_value(item, seen) for item in value]
+        finally:
+            seen.remove(value_id)
+    if isinstance(value, tuple):
+        seen.add(value_id)
+        try:
+            return [_safe_json_value(item, seen) for item in value]
+        finally:
+            seen.remove(value_id)
+    if isinstance(value, dict):
+        seen.add(value_id)
+        try:
+            return {str(key): _safe_json_value(item, seen) for key, item in value.items()}
+        finally:
+            seen.remove(value_id)
+    if is_dataclass(value) and not isinstance(value, type):
+        seen.add(value_id)
+        try:
+            return {
+                field.name: _safe_json_value(getattr(value, field.name), seen)
+                for field in fields(value)
+            }
+        finally:
+            seen.remove(value_id)
+
+    return _bounded_repr(value)
+
+
+def _bounded_repr(value: object, *, limit: int = 200) -> str:
+    try:
+        text = repr(value)
+    except Exception:
+        text = f"<unrepresentable {type(value).__name__}>"
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3]}..."

@@ -74,14 +74,51 @@ class TaskNotificationMessage:
 
 
 @dataclass
+class TaskStartedMessage:
+    task_id: str
+    status: str
+    message: str
+
+
+@dataclass
+class TaskProgressMessage:
+    task_id: str
+    status: str
+    message: str
+    progress: int
+    total: int
+
+
+@dataclass
 class StreamEvent:
     event: str
     data: dict[str, Any]
 
 
 @dataclass
+class RateLimitEvent:
+    message: str
+    delay_seconds: int
+    remaining: int
+
+
+@dataclass
 class StrangeCustomMessage:
     payload: object
+
+
+class UnknownSdkLikeMessage:
+    public_secret = "sk-secret"
+    payload = "not recorded"
+
+    def __repr__(self) -> str:
+        return "<UnknownSdkLikeMessage>"
+
+
+@dataclass
+class CyclicPayload:
+    name: str
+    child: object | None = None
 
 
 def test_assistant_messages_become_model_spans_with_provider_model_and_usage() -> None:
@@ -178,6 +215,39 @@ def test_user_tool_result_system_stream_and_unknown_messages_record_safe_events(
     assert model_span.events[0].attributes["tool_use_id"] == "tool_1"
 
 
+def test_task_and_rate_limit_messages_record_allowlisted_events() -> None:
+    recorder = ClaudeRunRecorder(run_id="run_tasks", started_at=STARTED_AT)
+
+    recorder.record_message(TaskStartedMessage("task_1", "running", "started"))
+    recorder.record_message(TaskProgressMessage("task_1", "running", "halfway", 5, 10))
+    recorder.record_message(RateLimitEvent("slow down", 30, 2))
+    run = recorder.finish(ENDED_AT)
+
+    events = run.spans[0].events
+    assert [event.name for event in events] == [
+        "claude.task_started",
+        "claude.task_progress",
+        "claude.rate_limit",
+    ]
+    assert events[0].attributes == {
+        "task_id": "task_1",
+        "status": "running",
+        "message": "started",
+    }
+    assert events[1].attributes == {
+        "task_id": "task_1",
+        "message": "halfway",
+        "status": "running",
+        "progress": 5,
+        "total": 10,
+    }
+    assert events[2].attributes == {
+        "message": "slow down",
+        "delay_seconds": 30,
+        "remaining": 2,
+    }
+
+
 def test_result_message_sets_run_usage_cost_status_and_session_metadata() -> None:
     recorder = ClaudeRunRecorder(run_id="run_123", started_at=STARTED_AT)
 
@@ -224,6 +294,25 @@ def test_failed_and_interrupted_results_map_statuses() -> None:
     assert stopped_task.finish(ENDED_AT).status is RunStatus.interrupted
 
 
+def test_failed_status_is_not_downgraded_by_later_interrupted_signals() -> None:
+    result_then_interrupt = ClaudeRunRecorder(
+        run_id="run_result_then_interrupt",
+        started_at=STARTED_AT,
+    )
+    result_then_interrupt.record_message(ResultMessage(is_error=True, errors=["tool failed"]))
+    result_then_interrupt.record_message(ResultMessage(stop_reason="user_interrupt"))
+
+    task_then_interrupt = ClaudeRunRecorder(
+        run_id="run_task_then_interrupt",
+        started_at=STARTED_AT,
+    )
+    task_then_interrupt.record_message(TaskNotificationMessage("task_1", "failed", "tool failed"))
+    task_then_interrupt.record_message(TaskNotificationMessage("task_1", "stopped", "stopped"))
+
+    assert result_then_interrupt.finish(ENDED_AT).status is RunStatus.failed
+    assert task_then_interrupt.finish(ENDED_AT).status is RunStatus.failed
+
+
 def test_assistant_error_and_failed_task_notification_mark_run_failed() -> None:
     assistant_error = ClaudeRunRecorder(run_id="run_assistant_error", started_at=STARTED_AT)
     assistant_error.record_message(
@@ -241,3 +330,32 @@ def test_assistant_error_and_failed_task_notification_mark_run_failed() -> None:
 
     assert assistant_error.finish(ENDED_AT).status is RunStatus.failed
     assert task_failed.finish(ENDED_AT).status is RunStatus.failed
+
+
+def test_unknown_messages_do_not_collect_public_attrs_or_secrets() -> None:
+    recorder = ClaudeRunRecorder(run_id="run_unknown", started_at=STARTED_AT)
+
+    recorder.record_message(UnknownSdkLikeMessage())
+    run = recorder.finish(ENDED_AT)
+
+    attributes = run.spans[0].events[0].attributes
+    assert attributes == {
+        "message_type": "UnknownSdkLikeMessage",
+        "summary": "<UnknownSdkLikeMessage>",
+    }
+    assert "public_secret" not in attributes
+    assert "payload" not in attributes
+    assert "sk-secret" not in str(attributes)
+
+
+def test_self_referential_allowed_payload_does_not_crash() -> None:
+    payload = CyclicPayload("root")
+    payload.child = payload
+    recorder = ClaudeRunRecorder(run_id="run_cycle", started_at=STARTED_AT)
+
+    recorder.record_message(SystemMessage(subtype="cycle", data={"payload": payload}))
+    run = recorder.finish(ENDED_AT)
+
+    assert run.spans[0].events[0].attributes["data"] == {
+        "payload": {"name": "root", "child": "<cycle>"}
+    }
