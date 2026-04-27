@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "FastAPI service boundary for OpsCanvas ingest and query APIs."
 requires-python = ">=3.12"
 dependencies = [
+    "clickhouse-connect>=0.15.1",
     "fastapi>=0.115.0",
     "opscanvas-core",
     "pydantic-settings>=2.6.0",
