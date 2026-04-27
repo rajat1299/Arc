@@ -21,6 +21,45 @@ Local `docs/` is gitignored here. Keep product and engineering specs in that
 directory on your machine or share them out of band. Do not commit local-only
 reference docs to this repository.
 
+## Pricing V0
+
+Pricing v0 is a static, offline, source-backed model-price catalog in
+`opscanvas_core.pricing`. It does not call provider APIs, OpenRouter, or any live
+sync job at runtime. Catalog prices are USD per 1 million tokens, snapshotted on
+2026-04-27, and the module keeps source URLs on the seeded catalog entries.
+
+Seeded providers and models:
+
+- OpenAI: `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`
+- Anthropic: `claude-opus-4.7`, `claude-opus-4.6`, `claude-opus-4.5`,
+  `claude-opus-4.1`, `claude-opus-4`, `claude-sonnet-4.6`,
+  `claude-sonnet-4.5`, `claude-sonnet-4`, `claude-sonnet-3.7`,
+  `claude-haiku-4.5`, `claude-haiku-3.5`, `claude-haiku-3`
+- Google: `gemini-3-flash-preview`, `gemini-2.5-pro`,
+  `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
+Source URLs:
+
+- OpenAI: <https://openai.com/api/pricing/>
+- Anthropic: <https://platform.claude.com/docs/en/about-claude/pricing>
+- Google Gemini: <https://ai.google.dev/gemini-api/docs/pricing>
+
+Run cost semantics are intentionally conservative. A runtime-reported
+`usage.cost_usd` on the run is authoritative and wins. When it is missing, the
+API list and metrics routes compute a read-time fallback from priced model-call
+spans. Model spans use span attributes `provider` and `model` or `agent.model`;
+for OpenAI Agents runtimes, the API can infer provider `openai` when the span
+omits provider. If no span can be priced, the API can fall back to run metadata
+`provider` and `model` with run usage.
+
+Unknown providers or models are never guessed. A run summary cost remains `None`
+when no reported or computed cost exists, and aggregate metrics treat that run as
+`0` so totals stay deterministic without fake prices.
+
+Non-goals for pricing v0: live price sync, organization discounts, enterprise
+agreements, taxes, regional premiums, batch discounts, fast-mode premiums, budget
+enforcement, and billing integration.
+
 ## First Commands
 
 Install and verify the workspace:

@@ -17,9 +17,50 @@ Implemented routes:
 
 The run store defaults to process-local memory. Set
 `OPSCANVAS_API_STORE_BACKEND=clickhouse` to use the local ClickHouse adapter instead.
-The API does not yet write to a queue, redaction pipeline, auth layer, or pricing
-engine. Submitting a duplicate run ID replaces the prior run deliberately so
-local/dev ingestion can be retried idempotently.
+The API does not yet write to a queue, redaction pipeline, auth layer, budget
+engine, or billing integration. Submitting a duplicate run ID replaces the prior
+run deliberately so local/dev ingestion can be retried idempotently.
+
+## Pricing V0 Cost Semantics
+
+Pricing v0 is static, offline, and source-backed. The API uses the
+`opscanvas_core.pricing` catalog at read time; it does not perform live provider
+sync, OpenRouter calls, or background price refresh.
+
+Reported run cost takes precedence. When a canonical run includes
+`usage.cost_usd`, `GET /v1/runs` and `GET /v1/runs/metrics` use that value and do
+not replace it with computed span cost.
+
+When run `usage.cost_usd` is missing, list and metrics compute a fallback from
+priced `model_call` spans. The fallback reads provider from span attribute
+`provider`, model from `model` or `agent.model`, and usage from the span. For
+OpenAI Agents runtimes, provider `openai` can be inferred when the span omits a
+provider. If no model span can be priced, the API can compute from run metadata
+`provider` and `model` with run usage.
+
+Unknown providers or models are unpriced. Summary `cost_usd` remains `null` when
+there is no reported or computed cost, and metrics aggregation treats that run as
+`0`; the API never invents prices.
+
+Seeded providers and models:
+
+- OpenAI: `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`
+- Anthropic: `claude-opus-4.7`, `claude-opus-4.6`, `claude-opus-4.5`,
+  `claude-opus-4.1`, `claude-opus-4`, `claude-sonnet-4.6`,
+  `claude-sonnet-4.5`, `claude-sonnet-4`, `claude-sonnet-3.7`,
+  `claude-haiku-4.5`, `claude-haiku-3.5`, `claude-haiku-3`
+- Google: `gemini-3-flash-preview`, `gemini-2.5-pro`,
+  `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
+Source URLs:
+
+- OpenAI: <https://openai.com/api/pricing/>
+- Anthropic: <https://platform.claude.com/docs/en/about-claude/pricing>
+- Google Gemini: <https://ai.google.dev/gemini-api/docs/pricing>
+
+Non-goals for pricing v0: live sync, organization discounts, enterprise
+agreements, taxes, regional premiums, batch discounts, fast-mode premiums, budget
+enforcement, and billing integration.
 
 ## Local Smoke
 
