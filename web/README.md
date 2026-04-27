@@ -20,7 +20,7 @@ static mock data from `web/app/data.ts` so the first screen remains usable.
 Start the API in one terminal:
 
 ```sh
-uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
 ```
 
 In another terminal, seed it with a sample run:

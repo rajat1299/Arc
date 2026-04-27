@@ -33,7 +33,7 @@ make verify
 Useful focused commands:
 
 ```sh
-uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
 make smoke-ingest
 pnpm --filter web dev
 uv run pytest packages/opscanvas-core/tests -q
@@ -47,7 +47,7 @@ pnpm run verify
 Start the API in one terminal:
 
 ```sh
-uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
 ```
 
 Then post and query a canonical sample run:

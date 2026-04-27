@@ -25,7 +25,7 @@ idempotently.
 Start the API from the repository root:
 
 ```sh
-uv run uvicorn opscanvas_api.app:app --app-dir services/api/src --reload
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
 ```
 
 In another terminal, post a canonical sample run and query it back:
