@@ -11,7 +11,7 @@ const REDACTED = "[redacted]";
 const MAX_DEPTH = 8;
 
 const SECRET_KEY_PATTERN =
-  /^(authorization|auth|api[_-]?key|apikey|secret|password|passwd|pwd|access[_-]?token|refresh[_-]?token|bearer|x-api-key|cookie|set-cookie)$/i;
+  /(?:^|[_\-.])(authorization|auth|api[_-]?key|apikey|secret|password|passwd|pwd|access[_-]?token|refresh[_-]?token|bearer|x-api-key|cookie|set-cookie)(?:$|[_\-.])/i;
 
 const SECRET_VALUE_PATTERNS: ReadonlyArray<RegExp> = [
   /Bearer\s+[A-Za-z0-9._\-+/=]{8,}/g,

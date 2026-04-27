@@ -469,10 +469,10 @@ function hasSuboptimalSignal(span: ApiSpan): boolean {
 
 function extractErrorMessage(span: ApiSpan): string | null {
   if (typeof span.attributes.error === "string" && span.attributes.error.length > 0) {
-    return span.attributes.error;
+    return redactErrorMessage(span.attributes.error);
   }
   if (typeof span.attributes["error.message"] === "string") {
-    return span.attributes["error.message"] as string;
+    return redactErrorMessage(span.attributes["error.message"]);
   }
   const errorEvent = span.events.find(
     (event) => event.name.includes("error") || event.name.includes("failed"),
@@ -480,11 +480,16 @@ function extractErrorMessage(span: ApiSpan): string | null {
   if (errorEvent !== undefined) {
     const message = errorEvent.attributes?.message;
     if (typeof message === "string" && message.length > 0) {
-      return message;
+      return redactErrorMessage(message);
     }
     return errorEvent.name;
   }
   return null;
+}
+
+function redactErrorMessage(message: string): string {
+  const redacted = redactValue(message);
+  return typeof redacted === "string" ? redacted : "[redacted]";
 }
 
 function getSpanDepth(
