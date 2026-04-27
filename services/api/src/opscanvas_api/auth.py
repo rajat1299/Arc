@@ -33,9 +33,10 @@ def configured_api_keys(settings: Settings) -> tuple[str, ...]:
 
 
 def validate_api_key(token: str, configured_keys: tuple[str, ...]) -> bool:
+    token_bytes = token.encode("utf-8")
     valid = False
     for configured_key in configured_keys:
-        valid = secrets.compare_digest(token, configured_key) or valid
+        valid = secrets.compare_digest(token_bytes, configured_key.encode("utf-8")) or valid
     return valid
 
 

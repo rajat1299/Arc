@@ -37,6 +37,10 @@ def test_validate_api_key_accepts_only_configured_key() -> None:
     assert validate_api_key("", configured_keys) is False
 
 
+def test_validate_api_key_rejects_non_ascii_token_without_error() -> None:
+    assert validate_api_key("ß", ("alpha",)) is False
+
+
 def test_authenticate_api_key_returns_non_secret_principal_for_valid_token() -> None:
     settings = fake_settings(auth_enabled=True, api_keys="alpha,beta")
 
@@ -101,6 +105,16 @@ def test_require_api_key_rejects_invalid_token_without_echoing_secret() -> None:
     assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
     assert "wrong-secret" not in str(exc_info.value.detail)
     assert "alpha" not in str(exc_info.value.detail)
+
+
+def test_require_api_key_rejects_non_ascii_token_with_bearer_challenge() -> None:
+    settings = fake_settings(auth_enabled=True, api_keys="alpha")
+
+    with pytest.raises(HTTPException) as exc_info:
+        require_api_key(settings=settings, authorization="Bearer ß")
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
 
 
 def test_require_api_key_fails_closed_when_enabled_without_configured_keys() -> None:
