@@ -1,5 +1,6 @@
 """Pure helpers for OpenAI-compatible proxy mapping."""
 
+import string
 from collections.abc import Mapping
 from datetime import datetime
 from urllib.parse import SplitResult, urlsplit, urlunsplit
@@ -16,6 +17,7 @@ _MAX_SUMMARY_STRING_LENGTH = 200
 _MAX_FINISH_REASONS = 16
 
 _LOCAL_HTTP_HOSTS = frozenset({"localhost", "127.0.0.1", "testserver"})
+_UNSAFE_NETLOC_CHARACTERS = frozenset(string.whitespace)
 _REQUEST_HEADER_ALLOWLIST = frozenset(
     {
         "content-type",
@@ -60,10 +62,9 @@ def _validated_upstream_base_url(base_url: str) -> SplitResult:
     parsed = urlsplit(stripped)
     if parsed.query or parsed.fragment:
         raise ValueError("OpenAI upstream base URL must not include a query or fragment.")
+    _validate_netloc(parsed)
 
     if parsed.scheme == "https":
-        if not parsed.netloc:
-            raise ValueError("OpenAI upstream base URL must include a host.")
         return parsed
 
     if parsed.scheme == "http":
@@ -73,6 +74,17 @@ def _validated_upstream_base_url(base_url: str) -> SplitResult:
         raise ValueError("OpenAI upstream base URL may use http only for local test hosts.")
 
     raise ValueError("OpenAI upstream base URL must use https.")
+
+
+def _validate_netloc(parsed: SplitResult) -> None:
+    if not parsed.netloc or parsed.hostname is None:
+        raise ValueError("OpenAI upstream base URL must include a valid host.")
+    if any(character in _UNSAFE_NETLOC_CHARACTERS for character in parsed.netloc):
+        raise ValueError("OpenAI upstream base URL host must not include whitespace.")
+    try:
+        _ = parsed.port
+    except ValueError as error:
+        raise ValueError("OpenAI upstream base URL must include a valid port.") from error
 
 
 def forward_request_headers(headers: Mapping[str, str], upstream_api_key: str) -> dict[str, str]:
