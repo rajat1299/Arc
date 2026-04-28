@@ -79,6 +79,8 @@ def _validated_upstream_base_url(base_url: str) -> SplitResult:
 def _validate_netloc(parsed: SplitResult) -> None:
     if not parsed.netloc or parsed.hostname is None:
         raise ValueError("OpenAI upstream base URL must include a valid host.")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("OpenAI upstream base URL must not include credentials.")
     if any(character in _UNSAFE_NETLOC_CHARACTERS for character in parsed.netloc):
         raise ValueError("OpenAI upstream base URL host must not include whitespace.")
     try:

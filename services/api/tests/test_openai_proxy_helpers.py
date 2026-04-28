@@ -65,6 +65,8 @@ def test_validate_upstream_base_url_allows_https_and_local_http(base_url: str) -
         "https://api.openai.com:99999/v1",
         "http://localhost:bad/v1",
         "https:// api.openai.com/v1",
+        "https://user@example.com/v1",
+        "https://user:pass@example.com/v1",
     ],
 )
 def test_validate_upstream_base_url_rejects_unsafe_values(base_url: str) -> None:
