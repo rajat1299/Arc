@@ -49,6 +49,19 @@ def test_disabled_proxy_route_returns_404() -> None:
     assert response.status_code == 404
 
 
+def test_disabled_proxy_trailing_slash_route_returns_404_not_redirect() -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/chat/completions/",
+        json={"model": "gpt-5.4-mini"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+    assert "location" not in response.headers
+
+
 def test_enabled_proxy_with_missing_upstream_key_returns_503_without_upstream_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

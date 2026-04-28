@@ -32,6 +32,7 @@ class OpenAIProxyHttpClient(Protocol):
     ) -> httpx.Response: ...
 
 
+@router.post("/v1/chat/completions/", include_in_schema=False)
 @router.post("/v1/chat/completions")
 async def proxy_chat_completions(
     request: Request,

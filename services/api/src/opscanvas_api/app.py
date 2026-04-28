@@ -53,9 +53,12 @@ def _install_pre_body_auth_guard(fastapi_app: FastAPI, settings: Settings) -> No
 
 
 def _is_protected_path(path: str) -> bool:
-    return path in {"/v1/chat/completions", "/v1/ingest", "/v1/runs"} or path.startswith(
-        ("/v1/ingest/", "/v1/runs/")
-    )
+    return path in {
+        "/v1/chat/completions",
+        "/v1/chat/completions/",
+        "/v1/ingest",
+        "/v1/runs",
+    } or path.startswith(("/v1/ingest/", "/v1/runs/"))
 
 
 def create_run_store(settings: Settings) -> RunStore:

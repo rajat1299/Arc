@@ -92,6 +92,23 @@ def test_malformed_openai_proxy_json_without_credentials_returns_401_before_body
     assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
+def test_malformed_openai_proxy_trailing_slash_json_without_credentials_returns_401_not_redirect(
+    auth_enabled: None,
+) -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/chat/completions/",
+        content="{",
+        headers={"Content-Type": "application/json"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+    assert "location" not in response.headers
+
+
 def test_malformed_openai_proxy_json_with_invalid_credentials_returns_401_before_body_parse(
     auth_enabled: None,
 ) -> None:
