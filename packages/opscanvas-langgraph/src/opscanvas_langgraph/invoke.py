@@ -13,6 +13,7 @@ from opscanvas_langgraph.exporter import OpsCanvasExporter
 from opscanvas_langgraph.recorder import LangGraphRunRecorder
 
 DEFAULT_INVOKE_STREAM_MODES = ("tasks", "checkpoints", "messages", "values")
+StreamModes = str | Sequence[str] | None
 
 
 class _SyncStreamGraph(Protocol):
@@ -46,7 +47,7 @@ def traced_invoke(
     opscanvas_config: OpsCanvasConfig | None = None,
     run_id: str | None = None,
     workflow_name: str | None = None,
-    stream_modes: Sequence[str] | None = None,
+    stream_modes: StreamModes = None,
 ) -> object:
     """Invoke a LangGraph through public streaming APIs and record one OpsCanvas run."""
     modes = _effective_stream_modes(stream_modes)
@@ -91,7 +92,7 @@ async def traced_ainvoke(
     opscanvas_config: OpsCanvasConfig | None = None,
     run_id: str | None = None,
     workflow_name: str | None = None,
-    stream_modes: Sequence[str] | None = None,
+    stream_modes: StreamModes = None,
 ) -> object:
     """Async invoke a LangGraph through public streaming APIs and record one OpsCanvas run."""
     modes = _effective_stream_modes(stream_modes)
@@ -155,8 +156,12 @@ def _workflow_name(graph: object, explicit: str | None) -> str:
     return "LangGraph"
 
 
-def _effective_stream_modes(stream_modes: Sequence[str] | None) -> list[str]:
-    return list(stream_modes or DEFAULT_INVOKE_STREAM_MODES)
+def _effective_stream_modes(stream_modes: StreamModes) -> list[str]:
+    if stream_modes is None:
+        return list(DEFAULT_INVOKE_STREAM_MODES)
+    if isinstance(stream_modes, str):
+        return [stream_modes]
+    return list(stream_modes)
 
 
 async def _call_astream(
@@ -177,7 +182,10 @@ def _close_sync_stream(stream: Iterable[object] | None) -> None:
         return
     close = getattr(stream, "close", None)
     if callable(close):
-        close()
+        try:
+            close()
+        except BaseException:
+            pass
 
 
 async def _close_async_stream(stream: AsyncIterable[object] | None) -> None:
@@ -185,9 +193,12 @@ async def _close_async_stream(stream: AsyncIterable[object] | None) -> None:
         return
     aclose = getattr(stream, "aclose", None)
     if callable(aclose):
-        result = aclose()
-        if inspect.isawaitable(result):
-            await result
+        try:
+            result = aclose()
+            if inspect.isawaitable(result):
+                await result
+        except BaseException:
+            pass
 
 
 class _FinalOutput:

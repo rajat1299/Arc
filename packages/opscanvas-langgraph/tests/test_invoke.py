@@ -66,6 +66,46 @@ class FailingSyncGraph:
         raise RuntimeError("stream failed")
 
 
+class ClosingFailingSyncStream:
+    def __init__(self) -> None:
+        self._yielded = False
+
+    def __iter__(self) -> ClosingFailingSyncStream:
+        return self
+
+    def __next__(self) -> object:
+        if not self._yielded:
+            self._yielded = True
+            return ("values", {"partial": True})
+        raise RuntimeError("stream failed")
+
+    def close(self) -> None:
+        raise RuntimeError("close failed")
+
+
+class ClosingFailingSyncGraph:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def stream(
+        self,
+        input: object,
+        *,
+        config: dict[str, object],
+        version: str,
+        stream_mode: list[str],
+    ) -> ClosingFailingSyncStream:
+        self.calls.append(
+            {
+                "input": input,
+                "config": config,
+                "version": version,
+                "stream_mode": stream_mode,
+            }
+        )
+        return ClosingFailingSyncStream()
+
+
 class FakeAsyncGraph:
     name = "Async graph"
 
@@ -91,6 +131,46 @@ class FakeAsyncGraph:
         )
         for chunk in self.chunks:
             yield chunk
+
+
+class ClosingFailingAsyncStream:
+    def __init__(self) -> None:
+        self._yielded = False
+
+    def __aiter__(self) -> ClosingFailingAsyncStream:
+        return self
+
+    async def __anext__(self) -> object:
+        if not self._yielded:
+            self._yielded = True
+            return ("values", {"partial": True})
+        raise RuntimeError("astream failed")
+
+    async def aclose(self) -> None:
+        raise RuntimeError("aclose failed")
+
+
+class ClosingFailingAsyncGraph:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def astream(
+        self,
+        input: object,
+        *,
+        config: dict[str, object],
+        version: str,
+        stream_mode: list[str],
+    ) -> ClosingFailingAsyncStream:
+        self.calls.append(
+            {
+                "input": input,
+                "config": config,
+                "version": version,
+                "stream_mode": stream_mode,
+            }
+        )
+        return ClosingFailingAsyncStream()
 
 
 class BlockingAsyncGraph:
@@ -205,6 +285,18 @@ def test_traced_invoke_preserves_callback_order_without_mutating_config(
     assert original_callbacks == [existing_callback]
 
 
+def test_traced_invoke_accepts_single_stream_mode_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invoke = reload_invoke_with_fake_langgraph(monkeypatch)
+    graph = FakeSyncGraph([("values", {"ok": True})])
+
+    result = invoke.traced_invoke(graph, {}, run_id="run_string_mode", stream_modes="values")
+
+    assert result == {"ok": True}
+    assert graph.calls[0]["stream_mode"] == ["values"]
+
+
 def test_traced_invoke_falls_back_to_last_non_task_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -230,6 +322,28 @@ def test_traced_invoke_exports_failed_run_and_reraises_stream_error(
 
     with pytest.raises(RuntimeError, match="stream failed"):
         invoke.traced_invoke(FailingSyncGraph(), {}, exporter=exporter, run_id="run_failed")
+
+    assert len(exporter.runs) == 1
+    assert exporter.runs[0].status is RunStatus.failed
+    assert exporter.runs[0].metadata["langgraph.error"] == {
+        "type": "RuntimeError",
+        "has_error": True,
+    }
+
+
+def test_traced_invoke_suppresses_close_error_after_stream_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invoke = reload_invoke_with_fake_langgraph(monkeypatch)
+    exporter = OpsCanvasExporter()
+
+    with pytest.raises(RuntimeError, match="stream failed"):
+        invoke.traced_invoke(
+            ClosingFailingSyncGraph(),
+            {},
+            exporter=exporter,
+            run_id="run_close_failed",
+        )
 
     assert len(exporter.runs) == 1
     assert exporter.runs[0].status is RunStatus.failed
@@ -267,6 +381,31 @@ def test_traced_ainvoke_passes_public_stream_arguments_and_returns_values(
     assert len(exporter.runs) == 1
     assert exporter.runs[0].status is RunStatus.succeeded
     assert exporter.runs[0].workflow_name == "Async graph"
+
+
+def test_traced_ainvoke_suppresses_aclose_error_after_stream_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invoke = reload_invoke_with_fake_langgraph(monkeypatch)
+    exporter = OpsCanvasExporter()
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="astream failed"):
+            await invoke.traced_ainvoke(
+                ClosingFailingAsyncGraph(),
+                {},
+                exporter=exporter,
+                run_id="run_aclose_failed",
+            )
+
+    asyncio.run(run())
+
+    assert len(exporter.runs) == 1
+    assert exporter.runs[0].status is RunStatus.failed
+    assert exporter.runs[0].metadata["langgraph.error"] == {
+        "type": "RuntimeError",
+        "has_error": True,
+    }
 
 
 def test_traced_ainvoke_cancellation_exports_interrupted_run(
