@@ -1,6 +1,8 @@
 import sys
+from collections.abc import Mapping
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from factories import canonical_run_payload
 from fastapi.testclient import TestClient
@@ -244,6 +246,57 @@ def test_openai_agents_runtime_infers_openai_provider_for_span_cost() -> None:
     response = client.get("/v1/runs")
 
     assert response.json()[0]["cost_usd"] == 0.00975
+
+
+def test_proxied_run_summary_cost_is_computed_from_priced_openai_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SuccessfulProxyClient:
+        async def post(
+            self,
+            url: str,
+            *,
+            json: Mapping[str, object],
+            headers: Mapping[str, str],
+        ) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl_priced",
+                    "object": "chat.completion",
+                    "model": "gpt-5.4-mini",
+                    "choices": [{"index": 0, "finish_reason": "stop", "message": {}}],
+                    "usage": {
+                        "prompt_tokens": 1_000,
+                        "completion_tokens": 2_000,
+                        "total_tokens": 3_000,
+                    },
+                },
+            )
+
+    monkeypatch.setenv("OPSCANVAS_API_OPENAI_PROXY_ENABLED", "true")
+    monkeypatch.setenv("OPSCANVAS_API_OPENAI_UPSTREAM_API_KEY", "sk-upstream-secret")
+    monkeypatch.setenv("OPSCANVAS_API_OPENAI_UPSTREAM_BASE_URL", "http://testserver/v1")
+    app = create_app()
+    app.state.openai_proxy_http_client = SuccessfulProxyClient()
+    client = TestClient(app)
+
+    proxy_response = client.post(
+        "/v1/chat/completions",
+        json={"model": "gpt-5.4-mini", "messages": [{"role": "user", "content": "price it"}]},
+    )
+    runs_response = client.get(
+        "/v1/runs",
+        params={"runtime": "openai-compatible-proxy", "limit": 1},
+    )
+
+    assert proxy_response.status_code == 200
+    assert runs_response.status_code == 200
+    runs = runs_response.json()
+    assert len(runs) == 1
+    assert runs[0]["runtime"] == "openai-compatible-proxy"
+    assert runs[0]["total_tokens"] == 3_000
+    assert runs[0]["cost_usd"] == 0.00975
 
 
 def test_unknown_model_with_missing_run_cost_stays_unpriced() -> None:

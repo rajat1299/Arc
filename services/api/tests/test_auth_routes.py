@@ -136,6 +136,24 @@ def test_openai_proxy_route_is_not_advertised_when_disabled(auth_enabled: None) 
     assert response.status_code == 404
 
 
+def test_openai_proxy_valid_bearer_reaches_enabled_proxy_route_behavior(
+    auth_enabled: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPSCANVAS_API_OPENAI_PROXY_ENABLED", "true")
+    monkeypatch.delenv("OPSCANVAS_API_OPENAI_UPSTREAM_API_KEY", raising=False)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/chat/completions",
+        content="{",
+        headers={"Content-Type": "application/json", **AUTH_HEADERS},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "OpenAI proxy upstream API key is not configured."}
+
+
 def test_malformed_ingest_json_with_valid_credentials_returns_422(auth_enabled: None) -> None:
     client = TestClient(create_app())
 
