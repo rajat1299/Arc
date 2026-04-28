@@ -12,6 +12,7 @@ shell with API fallback behavior.
 - `packages/opscanvas-core/`: shared Python contracts for canonical runs, spans, events, and schema versions.
 - `packages/opscanvas-agents/`: OpenAI Agents SDK tracing processor, exporter, and ingest client.
 - `packages/opscanvas-claude/`: Claude Agent SDK recorder, hook helpers, and traced query wrapper.
+- `packages/opscanvas-langgraph/`: LangGraph recorder plus traced invoke and stream wrappers.
 - `services/api/`: FastAPI service with memory and local ClickHouse ingest/query stores.
 - `web/`: Next.js shell that reads API run summaries when configured and falls back to static data.
 - `infra/`: placeholder for future local development infrastructure.
