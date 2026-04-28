@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 from copy import copy as shallow_copy
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Any, Protocol, TypeGuard, cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -11,13 +12,15 @@ if TYPE_CHECKING:
     from opscanvas_langgraph.recorder import LangGraphRunRecorder
 
 try:
-    from langgraph.callbacks import (  # type: ignore[import-not-found]
-        GraphCallbackHandler as _GraphCallbackHandler,
-    )
-except ImportError:
-    _GraphCallbackHandler = object
+    _langgraph_callbacks = importlib.import_module("langgraph.callbacks")
+except ModuleNotFoundError:
+    _GraphCallbackHandler: type[Any] = object
     _LANGGRAPH_IMPORTABLE = False
 else:
+    _GraphCallbackHandler = cast(
+        type[Any],
+        _langgraph_callbacks.GraphCallbackHandler,
+    )
     _LANGGRAPH_IMPORTABLE = True
 
 
