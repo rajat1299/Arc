@@ -65,6 +65,19 @@ async for chunk in traced_astream(graph, {"input": "hello"}, durability="sync"):
     await handle_chunk(chunk)
 ```
 
+If an async stream may be consumed only partially, close it explicitly so the
+interrupted run is exported promptly:
+
+```python
+from contextlib import aclosing
+from opscanvas_langgraph import traced_astream
+
+async with aclosing(traced_astream(graph, {"input": "hello"})) as chunks:
+    async for chunk in chunks:
+        if should_stop(chunk):
+            break
+```
+
 Stream wrappers request public LangGraph stream mode `["tasks", "checkpoints",
 "messages", "values"]` with `version="v2"` by default. Pass `stream_modes="values"`
 or a sequence such as `["messages", "values"]` to choose visible modes. Public
