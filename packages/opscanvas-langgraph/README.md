@@ -12,6 +12,33 @@ Install LangGraph support when using runtime wrappers:
 pip install 'opscanvas-langgraph[langgraph]'
 ```
 
+## Traced invoke
+
+Use `traced_invoke` or `traced_ainvoke` when you want normal invoke-style final
+outputs and an OpsCanvas run recorded from LangGraph's public `stream` APIs:
+
+```python
+from opscanvas_langgraph import traced_invoke
+
+result = traced_invoke(
+    graph,
+    {"input": "hello"},
+    config={"configurable": {"thread_id": "ticket-123"}},
+    workflow_name="Support graph",
+)
+```
+
+```python
+from opscanvas_langgraph import traced_ainvoke
+
+result = await traced_ainvoke(graph, {"input": "hello"})
+```
+
+Invoke wrappers request public LangGraph stream mode `["tasks", "checkpoints",
+"messages", "values"]` with `version="v2"`. The final return value comes from
+the latest `values` chunk, falling back to the last non-task payload when a graph
+does not emit values.
+
 ## Callback recording
 
 Use `merge_opscanvas_callbacks` when you already own a LangGraph config and want
