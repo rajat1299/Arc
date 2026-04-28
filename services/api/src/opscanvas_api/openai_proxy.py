@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from opscanvas_core.events import Run, RunStatus, Span, SpanKind, Usage
 from opscanvas_core.ids import generate_run_id, generate_span_id
@@ -40,26 +40,36 @@ _RESPONSE_HEADER_ALLOWLIST = frozenset(
 
 def build_upstream_url(base_url: str, path: str) -> str:
     """Join a configured upstream base URL to a fixed proxy path."""
-    validate_upstream_base_url(base_url)
-    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+    parsed = _validated_upstream_base_url(base_url)
+    normalized_base_url = urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", "")
+    )
+    return f"{normalized_base_url}/{path.lstrip('/')}"
 
 
 def validate_upstream_base_url(base_url: str) -> None:
     """Validate the upstream base URL against the v0 proxy security policy."""
+    _validated_upstream_base_url(base_url)
+
+
+def _validated_upstream_base_url(base_url: str) -> SplitResult:
     stripped = base_url.strip()
     if not stripped:
         raise ValueError("OpenAI upstream base URL must not be empty.")
 
     parsed = urlsplit(stripped)
+    if parsed.query or parsed.fragment:
+        raise ValueError("OpenAI upstream base URL must not include a query or fragment.")
+
     if parsed.scheme == "https":
         if not parsed.netloc:
             raise ValueError("OpenAI upstream base URL must include a host.")
-        return
+        return parsed
 
     if parsed.scheme == "http":
         hostname = parsed.hostname or ""
         if hostname.lower() in _LOCAL_HTTP_HOSTS:
-            return
+            return parsed
         raise ValueError("OpenAI upstream base URL may use http only for local test hosts.")
 
     raise ValueError("OpenAI upstream base URL must use https.")

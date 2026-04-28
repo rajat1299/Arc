@@ -32,6 +32,13 @@ def test_build_upstream_url_joins_base_and_chat_completions_path() -> None:
     )
 
 
+def test_build_upstream_url_normalizes_whitespace_in_base_url() -> None:
+    assert (
+        build_upstream_url("  https://api.openai.com/v1/ \n", "/chat/completions")
+        == "https://api.openai.com/v1/chat/completions"
+    )
+
+
 @pytest.mark.parametrize(
     "base_url",
     [
@@ -47,7 +54,14 @@ def test_validate_upstream_base_url_allows_https_and_local_http(base_url: str) -
 
 @pytest.mark.parametrize(
     "base_url",
-    ["", "ftp://api.openai.com/v1", "http://api.openai.com/v1", "http://192.168.1.1/v1"],
+    [
+        "",
+        "ftp://api.openai.com/v1",
+        "http://api.openai.com/v1",
+        "http://192.168.1.1/v1",
+        "https://api.openai.com/v1?x=1",
+        "https://api.openai.com/v1#fragment",
+    ],
 )
 def test_validate_upstream_base_url_rejects_unsafe_values(base_url: str) -> None:
     with pytest.raises(ValueError):
