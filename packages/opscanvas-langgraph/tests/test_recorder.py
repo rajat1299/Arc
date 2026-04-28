@@ -485,19 +485,19 @@ def test_public_interrupt_and_resume_event_fields_are_recorded_safely() -> None:
     run = recorder.finish(ENDED_AT)
 
     interrupt_event, resume_event = run.spans[0].events
-    assert interrupt_event.attributes["run_id"] == {"type": "str", "length": 15}
-    assert interrupt_event.attributes["status"] == {"type": "str", "length": 11}
-    assert interrupt_event.attributes["checkpoint_id"] == {"type": "str", "length": 12}
-    assert interrupt_event.attributes["checkpoint_ns"] == {"type": "str", "length": 8}
+    assert interrupt_event.attributes["run_id"] == "langgraph-run-1"
+    assert interrupt_event.attributes["status"] == "interrupted"
+    assert interrupt_event.attributes["checkpoint_id"] == "checkpoint-1"
+    assert interrupt_event.attributes["checkpoint_ns"] == "node:abc"
     assert interrupt_event.attributes["interrupts"] == {
         "type": "list",
         "item_count": 1,
         "item_types": ["dict"],
     }
-    assert resume_event.attributes["run_id"] == {"type": "str", "length": 15}
-    assert resume_event.attributes["status"] == {"type": "str", "length": 7}
-    assert resume_event.attributes["checkpoint_id"] == {"type": "str", "length": 12}
-    assert resume_event.attributes["checkpoint_ns"] == {"type": "str", "length": 8}
+    assert resume_event.attributes["run_id"] == "langgraph-run-1"
+    assert resume_event.attributes["status"] == "running"
+    assert resume_event.attributes["checkpoint_id"] == "checkpoint-2"
+    assert resume_event.attributes["checkpoint_ns"] == "node:def"
     assert resume_event.attributes["interrupts"] == {
         "type": "list",
         "item_count": 0,

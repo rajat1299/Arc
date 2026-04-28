@@ -379,20 +379,12 @@ def _usage_from_message_payload(payload: object) -> Usage | None:
 
 def _event_object_attributes(event: object) -> dict[str, JsonValue]:
     attributes: dict[str, JsonValue] = {"event_type": type(event).__name__}
-    for name in (
-        "reason",
-        "value",
-        "run_id",
-        "status",
-        "checkpoint_id",
-        "checkpoint_ns",
-        "interrupts",
-        "resumable",
-        "ns",
-        "namespace",
-        "when",
-        "config",
-    ):
+    for name in ("run_id", "status", "checkpoint_id", "checkpoint_ns"):
+        value = _get(event, name, None)
+        if value is not None:
+            attributes[name] = _json_value(value)
+
+    for name in ("reason", "value", "interrupts", "resumable", "ns", "namespace", "when", "config"):
         value = _get(event, name, None)
         if value is not None:
             attributes[name] = _json_summary(value)
