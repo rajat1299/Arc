@@ -77,6 +77,48 @@ def test_malformed_ingest_json_with_invalid_credentials_returns_401_before_body_
     assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
+def test_malformed_openai_proxy_json_without_credentials_returns_401_before_body_parse(
+    auth_enabled: None,
+) -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/chat/completions",
+        content="{",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_malformed_openai_proxy_json_with_invalid_credentials_returns_401_before_body_parse(
+    auth_enabled: None,
+) -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/chat/completions",
+        content="{",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer wrong"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_openai_proxy_route_is_not_advertised_when_disabled(auth_enabled: None) -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/chat/completions",
+        content="{}",
+        headers={"Content-Type": "application/json", **AUTH_HEADERS},
+    )
+
+    assert response.status_code == 404
+
+
 def test_malformed_ingest_json_with_valid_credentials_returns_422(auth_enabled: None) -> None:
     client = TestClient(create_app())
 

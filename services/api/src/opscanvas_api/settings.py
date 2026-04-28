@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     clickhouse_password: str = "opscanvas_dev_password"
     clickhouse_database: str = "opscanvas"
     clickhouse_secure: bool = False
+    openai_proxy_enabled: bool = False
+    openai_upstream_base_url: str = "https://api.openai.com/v1"
+    openai_upstream_api_key: str = Field(default="", repr=False)
+    openai_proxy_timeout_seconds: float = 120.0
+    proxy_capture_body: Literal["none", "summary", "redacted"] = "summary"
 
     model_config = SettingsConfigDict(env_prefix="OPSCANVAS_API_")
 
