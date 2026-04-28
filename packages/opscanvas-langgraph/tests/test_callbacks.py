@@ -34,6 +34,11 @@ class FakeCallbackManager:
         self.added: list[tuple[object, bool]] = []
 
     def __copy__(self) -> FakeCallbackManager:
+        copied = FakeCallbackManager(self.handlers)
+        copied.added = self.added
+        return copied
+
+    def copy(self) -> FakeCallbackManager:
         copied = FakeCallbackManager(list(self.handlers))
         copied.added = list(self.added)
         return copied

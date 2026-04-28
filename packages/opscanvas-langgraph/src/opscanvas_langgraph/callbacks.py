@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from copy import copy
+from copy import copy as shallow_copy
 from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 if TYPE_CHECKING:
@@ -66,7 +66,7 @@ def merge_opscanvas_callbacks(
         return merged
 
     if _is_callback_manager(callbacks):
-        copied_callbacks = copy(callbacks)
+        copied_callbacks = _copy_callback_manager(callbacks)
         copied_callbacks.add_handler(handler, inherit=True)
         merged["callbacks"] = copied_callbacks
         return merged
@@ -89,3 +89,27 @@ def _is_callback_manager(callbacks: object) -> TypeGuard[_CallbackManagerLike]:
     if not hasattr(callbacks, "add_handler"):
         return False
     return callable(callbacks.add_handler)
+
+
+def _copy_callback_manager(callbacks: _CallbackManagerLike) -> _CallbackManagerLike:
+    copy_method = getattr(callbacks, "copy", None)
+    copied = copy_method() if callable(copy_method) else shallow_copy(callbacks)
+
+    if copied is callbacks or not _is_callback_manager(copied):
+        raise TypeError("Could not safely copy callback manager before adding OpsCanvas handler.")
+
+    _raise_if_callback_state_shared(callbacks, copied)
+    return copied
+
+
+def _raise_if_callback_state_shared(
+    original: _CallbackManagerLike,
+    copied: _CallbackManagerLike,
+) -> None:
+    for attribute in ("handlers", "inheritable_handlers", "local_handlers"):
+        original_value = getattr(original, attribute, None)
+        copied_value = getattr(copied, attribute, None)
+        if isinstance(original_value, list) and original_value is copied_value:
+            raise TypeError(
+                "Could not safely copy callback manager before adding OpsCanvas handler."
+            )
