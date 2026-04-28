@@ -135,6 +135,55 @@ Auth v0 does not include an org, project, or user database; RBAC; UI management;
 key rotation; or rate limits. It is a scaffold for authenticated local and dev
 deployments, not a production auth system.
 
+## OpenAI-Compatible Proxy V0
+
+The API can expose a narrow OpenAI-compatible proxy for non-streaming Chat
+Completions at `/v1/chat/completions`. It is disabled by default. Enable it and
+configure the server-owned upstream OpenAI credential before starting the API:
+
+```sh
+OPSCANVAS_API_OPENAI_PROXY_ENABLED=true \
+OPSCANVAS_API_OPENAI_UPSTREAM_API_KEY=sk-... \
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
+```
+
+`OPSCANVAS_API_OPENAI_UPSTREAM_BASE_URL` is optional and defaults to
+`https://api.openai.com/v1`. When OpsCanvas API auth is enabled, OpenAI SDK
+clients use an OpsCanvas API key as `OPENAI_API_KEY`; the client base URL points
+to the OpsCanvas API `/v1`.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="dev_key_...",
+    base_url="http://127.0.0.1:8000/v1",
+)
+
+completion = client.chat.completions.create(
+    model="gpt-5.4-mini",
+    messages=[{"role": "user", "content": "Say hello from OpsCanvas."}],
+)
+print(completion.choices[0].message.content)
+```
+
+Proxy v0 stores a canonical OpsCanvas run with summary-only request and response
+metadata by default; raw prompts and completions are not persisted. The client
+key is not passed through as a provider key, and v0 does not support client BYOK,
+the Responses API, or SSE streaming.
+
+Inspect the smoke options without calling upstream:
+
+```sh
+uv run python scripts/smoke_openai_proxy.py --help
+```
+
+Run the live smoke only against an API configured with the proxy and upstream key:
+
+```sh
+uv run python scripts/smoke_openai_proxy.py --api-url http://127.0.0.1:8000 --api-key dev_key_... --model gpt-5.4-mini
+```
+
 ## ClickHouse API Mode
 
 Memory mode is the default and does not require Docker. To run the API with the

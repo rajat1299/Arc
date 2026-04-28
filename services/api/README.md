@@ -114,6 +114,60 @@ Auth v0 does not provide an org, project, or user database; RBAC; key-management
 UI; key rotation; or rate limits. Treat it as an authenticated local/dev
 deployment scaffold, not a production auth system.
 
+## OpenAI-Compatible Proxy V0
+
+The API includes an opt-in OpenAI-compatible proxy for non-streaming Chat
+Completions. When enabled, `POST /v1/chat/completions` forwards the request to
+the configured upstream OpenAI-compatible API and stores one canonical
+`openai-compatible-proxy` run with one `model_call` span.
+
+Start the API with the proxy enabled and a server-owned upstream key:
+
+```sh
+OPSCANVAS_API_OPENAI_PROXY_ENABLED=true \
+OPSCANVAS_API_OPENAI_UPSTREAM_API_KEY=sk-... \
+uv run --with uvicorn --package opscanvas-api python -m uvicorn opscanvas_api.app:app --app-dir services/api/src --host 127.0.0.1 --port 8000 --reload
+```
+
+`OPSCANVAS_API_OPENAI_UPSTREAM_BASE_URL` defaults to
+`https://api.openai.com/v1`. Set it only when targeting another compatible
+upstream. If API auth is enabled, SDK callers authenticate to OpsCanvas with an
+OpsCanvas API key; do not use the upstream OpenAI key on the client.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="dev_key_...",
+    base_url="http://127.0.0.1:8000/v1",
+)
+
+completion = client.chat.completions.create(
+    model="gpt-5.4-mini",
+    messages=[{"role": "user", "content": "Trace this through OpsCanvas."}],
+)
+print(completion.id)
+```
+
+Proxy capture is summary-only by default: model, counts, finish reasons, usage,
+status, and upstream request identifiers can be stored, but raw prompts,
+completion text, tool arguments, caller bearer tokens, and upstream API keys are
+not persisted. V0 does not support streaming, the Responses API, or client BYOK
+passthrough.
+
+The smoke script help is safe to run without an upstream call:
+
+```sh
+uv run python scripts/smoke_openai_proxy.py --help
+```
+
+The smoke itself posts a live Chat Completions request through the proxy, then
+queries the latest proxy run:
+
+```sh
+uv run python scripts/smoke_openai_proxy.py --api-url http://127.0.0.1:8000 --api-key dev_key_... --model gpt-5.4-mini
+```
+
 ## ClickHouse Mode
 
 Start the local ClickHouse service from the repository root:
