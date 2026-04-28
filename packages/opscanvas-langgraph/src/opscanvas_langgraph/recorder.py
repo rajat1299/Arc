@@ -305,6 +305,12 @@ class LangGraphRunRecorder:
 
 
 def _parse_stream_chunk(chunk: object) -> tuple[JsonValue | None, str, object] | None:
+    if isinstance(chunk, dict):
+        mode = chunk.get("type")
+        if isinstance(mode, str):
+            return _json_value(chunk.get("ns")), mode, chunk.get("data")
+        return None
+
     if not isinstance(chunk, tuple):
         return None
     if len(chunk) == 2 and isinstance(chunk[0], str):
@@ -376,6 +382,10 @@ def _event_object_attributes(event: object) -> dict[str, JsonValue]:
     for name in (
         "reason",
         "value",
+        "run_id",
+        "status",
+        "checkpoint_id",
+        "checkpoint_ns",
         "interrupts",
         "resumable",
         "ns",
@@ -412,10 +422,22 @@ def _usage_from(value: object) -> Usage | None:
             _first_present(value, "output_tokens", "completion_tokens", "output_token_count")
         ),
         cached_input_tokens=_optional_int(
-            _first_present(value, "cached_input_tokens", "cache_read_input_tokens")
+            _first_present(
+                value,
+                "cached_input_tokens",
+                "cache_read_input_tokens",
+                ("input_token_details", "cache_read"),
+                ("prompt_tokens_details", "cached_tokens"),
+            )
         ),
         reasoning_tokens=_optional_int(
-            _first_present(value, "reasoning_tokens", "thinking_tokens")
+            _first_present(
+                value,
+                "reasoning_tokens",
+                "thinking_tokens",
+                ("output_token_details", "reasoning"),
+                ("completion_tokens_details", "reasoning_tokens"),
+            )
         ),
         total_tokens=_optional_int(_first_present(value, "total_tokens")),
     )
@@ -424,12 +446,21 @@ def _usage_from(value: object) -> Usage | None:
     return None
 
 
-def _first_present(source: object, *names: str) -> object:
+def _first_present(source: object, *names: str | tuple[str, ...]) -> object:
     for name in names:
-        value = _get(source, name, None)
+        value = _get_path(source, name) if isinstance(name, tuple) else _get(source, name, None)
         if value is not None:
             return value
     return None
+
+
+def _get_path(source: object, path: tuple[str, ...]) -> object:
+    current = source
+    for name in path:
+        current = _get(current, name, None)
+        if current is None:
+            return None
+    return current
 
 
 def _optional_int(value: object) -> int | None:
