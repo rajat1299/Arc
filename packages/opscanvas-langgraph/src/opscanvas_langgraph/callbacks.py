@@ -76,7 +76,7 @@ def merge_opscanvas_callbacks(
         return merged
 
     if isinstance(callbacks, tuple):
-        merged["callbacks"] = (*callbacks, handler)
+        merged["callbacks"] = [*callbacks, handler]
         return merged
 
     merged["callbacks"] = [callbacks, handler]

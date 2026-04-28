@@ -155,7 +155,8 @@ def test_merge_preserves_callback_order_for_single_list_and_tuple(
     assert as_list["callbacks"] is not existing_list
     assert isinstance(as_list["callbacks"][2], callbacks.OpsCanvasGraphCallbackHandler)
     assert existing_list == [first, second]
-    assert as_tuple["callbacks"][:2] == existing_tuple
+    assert isinstance(as_tuple["callbacks"], list)
+    assert as_tuple["callbacks"][:2] == list(existing_tuple)
     assert isinstance(as_tuple["callbacks"][2], callbacks.OpsCanvasGraphCallbackHandler)
     assert len(existing_tuple) == 2
 
