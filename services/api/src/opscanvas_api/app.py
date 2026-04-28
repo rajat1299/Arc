@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from opscanvas_api.auth import require_api_key
 from opscanvas_api.routes.health import router as health_router
 from opscanvas_api.routes.ingest import router as ingest_router
+from opscanvas_api.routes.openai_proxy import router as openai_proxy_router
 from opscanvas_api.routes.runs import router as runs_router
 from opscanvas_api.settings import Settings, get_settings
 from opscanvas_api.store import ClickHouseRunStore, InMemoryRunStore, RunStore
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
     _install_pre_body_auth_guard(fastapi_app, settings)
     fastapi_app.include_router(health_router)
     fastapi_app.include_router(ingest_router)
+    fastapi_app.include_router(openai_proxy_router)
     fastapi_app.include_router(runs_router)
     return fastapi_app
 
