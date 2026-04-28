@@ -16,44 +16,11 @@ export function RunTable({ runs, selectedRunId }: Props) {
   }
 
   return (
-    <table className="run-table" aria-label="Recent runs">
-      <thead>
-        <tr>
-          <th scope="col" className="col-status">
-            Status
-          </th>
-          <th scope="col" className="col-workflow">
-            Workflow
-          </th>
-          <th scope="col" className="col-runtime">
-            Runtime
-          </th>
-          <th scope="col" className="col-tenant">
-            Tenant
-          </th>
-          <th scope="col" className="col-spans num">
-            Spans
-          </th>
-          <th scope="col" className="col-duration num">
-            Duration
-          </th>
-          <th scope="col" className="col-cost num">
-            Cost
-          </th>
-          <th scope="col" className="col-tokens num">
-            Tokens
-          </th>
-          <th scope="col" className="col-started num">
-            Started
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {runs.map((run) => (
-          <RunRowItem key={run.id} run={run} selected={run.id === selectedRunId} />
-        ))}
-      </tbody>
-    </table>
+    <div className="run-list" role="list" aria-label="Recent runs">
+      {runs.map((run) => (
+        <RunRowItem key={run.id} run={run} selected={run.id === selectedRunId} />
+      ))}
+    </div>
   );
 }
 
@@ -68,44 +35,48 @@ function RunRowItem({ run, selected }: { run: RunRow; selected: boolean }) {
           : "";
 
   return (
-    <tr
-      className={`${selected ? "is-selected" : ""} ${accentClass}`.trim()}
-      aria-selected={selected}
+    <Link
+      role="listitem"
+      className={`run-card ${selected ? "is-selected" : ""} ${accentClass}`.trim()}
+      href={runHref(run.id)}
+      aria-current={selected ? "page" : undefined}
+      aria-label={`Open run ${run.workflow} ${run.id}`}
     >
-      <td className="col-status">
+      <div className="run-card-heading">
         <span className={`status-label s-${run.status}`}>
-          <StatusDot status={run.status} />
+          <StatusDot status={run.status} decorative />
           {run.status}
         </span>
-      </td>
-      <td className="col-workflow">
-        <Link
-          className="run-cell-link"
-          href={runHref(run.id)}
-          aria-current={selected ? "page" : undefined}
-          aria-label={`Open run ${run.workflow} ${run.id}`}
-        >
-          <div className="cell-stack">
-            <span className="run-workflow">{run.workflow}</span>
-            <span className="run-id">{run.id}</span>
-          </div>
-        </Link>
-      </td>
-      <td className="col-runtime">
-        <span className="run-runtime">{run.runtime}</span>
-      </td>
-      <td className="col-tenant">
-        <span className="cell-mono">{run.tenant}</span>
-      </td>
-      <td className="col-spans num">
-        {run.spanCount}
-        <span className="run-id"> · {run.eventCount} ev</span>
-      </td>
-      <td className="col-duration num">{formatDurationMs(run.durationMs)}</td>
-      <td className="col-cost num">{formatCostUSD(run.costUsd)}</td>
-      <td className="col-tokens num">{formatTokens(run.totalTokens)}</td>
-      <td className="col-started num">{run.startedRelative}</td>
-    </tr>
+        <span className="run-started">{run.startedRelative}</span>
+      </div>
+      <div className="run-card-title">
+        <span className="run-workflow">{run.workflow}</span>
+        <span className="run-id">{run.id}</span>
+      </div>
+      <div className="run-card-meta">
+        <span>{run.runtime}</span>
+        <span>{run.environment ?? "default"}</span>
+        <span>{run.tenant}</span>
+      </div>
+      <div className="run-card-stats">
+        <span>
+          <strong>{formatDurationMs(run.durationMs)}</strong>
+          <small>Duration</small>
+        </span>
+        <span>
+          <strong>{formatCostUSD(run.costUsd)}</strong>
+          <small>Cost</small>
+        </span>
+        <span>
+          <strong>{formatTokens(run.totalTokens)}</strong>
+          <small>Tokens</small>
+        </span>
+        <span>
+          <strong>{run.spanCount}</strong>
+          <small>{run.eventCount} ev</small>
+        </span>
+      </div>
+    </Link>
   );
 }
 

@@ -1,26 +1,33 @@
-import type { ApiState } from "./data";
+import type { ApiState, RunRow, SpanNode } from "./data";
+import { ThemeToggle } from "./ThemeToggle";
 
 type Props = {
   apiState: ApiState;
+  selectedRun: RunRow | null;
+  selectedSpan: SpanNode | null;
 };
 
-export function Topbar({ apiState }: Props) {
+export function Topbar({ apiState, selectedRun, selectedSpan }: Props) {
   return (
     <header className="topbar" role="banner">
-      <div className="brand">
-        <span className="brand-mark" aria-hidden="true">
-          OC
-        </span>
-        <span>OpsCanvas</span>
+      <div className="topbar-location" aria-label="Current location">
+        <span>Observability</span>
+        <span aria-hidden="true">/</span>
+        <strong>{selectedRun?.workflow ?? "Runs"}</strong>
+        {selectedRun !== null ? <code>{selectedRun.id}</code> : null}
       </div>
       <div className="topbar-meta">
+        <span className="topbar-context">
+          {selectedSpan === null ? "No span selected" : selectedSpan.kind.replaceAll("_", " ")}
+        </span>
+        <ThemeToggle />
         <StateChip apiState={apiState} />
       </div>
     </header>
   );
 }
 
-function StateChip({ apiState }: { apiState: ApiState }) {
+export function StateChip({ apiState }: { apiState: ApiState }) {
   if (apiState.mode === "live") {
     return (
       <>

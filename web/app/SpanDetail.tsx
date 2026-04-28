@@ -9,9 +9,12 @@ type Props = {
 
 export function SpanDetail({ selectedRun, selectedSpan }: Props) {
   return (
-    <aside className="pane" aria-label="Selected span detail">
+    <aside className="pane detail-pane" id="span-detail" aria-label="Selected span detail">
       <div className="pane-header">
-        <span className="pane-title">Span</span>
+        <div>
+          <span className="pane-title">Span</span>
+          <span className="pane-subtitle">Properties and events</span>
+        </div>
       </div>
       <div className="pane-body">
         {selectedSpan === null || selectedRun === null ? (
@@ -19,9 +22,6 @@ export function SpanDetail({ selectedRun, selectedSpan }: Props) {
         ) : (
           <DetailContent run={selectedRun} span={selectedSpan} />
         )}
-        <section data-future-feature="v1.5" aria-hidden="true">
-          Improvement suggestions ship in v1.5
-        </section>
       </div>
     </aside>
   );

@@ -26,26 +26,32 @@ export function SpanWaterfall({
 }: Props) {
   if (selectedRun === null) {
     return (
-      <div className="pane">
+      <section className="pane trace-pane" id="trace" aria-label="Trace waterfall">
         <div className="pane-header">
-          <span className="pane-title">Trace</span>
+          <div>
+            <span className="pane-title">Trace</span>
+            <span className="pane-subtitle">Waterfall</span>
+          </div>
         </div>
         <div className="pane-body">
           <TraceEmpty hasRuns={runs.length > 0} />
         </div>
-      </div>
+      </section>
     );
   }
 
   const totalLabel = formatDurationMs(totalRunDurationMs);
 
   return (
-    <div className="pane">
+    <section className="pane trace-pane" id="trace" aria-label="Trace waterfall">
       <div className="pane-header">
-        <span className="pane-title">
-          <StatusDot status={selectedRun.status} />
-          {selectedRun.workflow}
-        </span>
+        <div>
+          <span className="pane-title">
+            <StatusDot status={selectedRun.status} />
+            {selectedRun.workflow}
+          </span>
+          <span className="pane-subtitle">Trace waterfall</span>
+        </div>
         <span className="pane-meta">
           <span>{selectedRun.id}</span>
           <span aria-hidden="true">·</span>
@@ -75,7 +81,7 @@ export function SpanWaterfall({
           </>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
