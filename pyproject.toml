@@ -20,6 +20,7 @@ members = [
     "packages/opscanvas-core",
     "packages/opscanvas-agents",
     "packages/opscanvas-claude",
+    "packages/opscanvas-langgraph",
     "services/api",
 ]
 

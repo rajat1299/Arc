@@ -3,12 +3,13 @@
 test:
 	uv run pytest packages/opscanvas-core/tests services/api/tests packages/opscanvas-agents/tests -q
 	uv run pytest packages/opscanvas-claude/tests -q
+	uv run pytest packages/opscanvas-langgraph/tests -q
 
 lint:
 	uv run ruff check packages services
 
 typecheck:
-	uv run mypy packages/opscanvas-core/src services/api/src packages/opscanvas-agents/src packages/opscanvas-claude/src
+	uv run mypy packages/opscanvas-core/src services/api/src packages/opscanvas-agents/src packages/opscanvas-claude/src packages/opscanvas-langgraph/src
 
 frontend:
 	@if [ -f web/package.json ]; then \
